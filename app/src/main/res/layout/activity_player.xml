@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/playerRoot"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#000000">
+
+    <LinearLayout android:id="@+id/headerBar"
+        android:layout_width="match_parent" android:layout_height="56dp"
+        android:background="@color/blue2"
+        android:gravity="center_vertical"
+        android:paddingLeft="8dp" android:paddingRight="16dp">
+        <TextView android:id="@+id/btnBack"
+            android:layout_width="40dp" android:layout_height="match_parent"
+            android:text="‹" android:textColor="#FFFFFF"
+            android:textSize="26sp" android:gravity="center"/>
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="VLC 播放器" android:textColor="#FFFFFF"
+            android:textSize="18sp" android:textStyle="bold"/>
+    </LinearLayout>
+
+    <FrameLayout android:id="@+id/videoContainer"
+        android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#000000">
+
+        <org.videolan.libvlc.util.VLCVideoLayout
+            android:id="@+id/videoLayout"
+            android:layout_width="match_parent" android:layout_height="match_parent"
+            android:background="#000000"/>
+
+        <ProgressBar
+            android:id="@+id/loading"
+            android:layout_width="50dp" android:layout_height="50dp"
+            android:layout_gravity="center"
+            android:indeterminateDuration="2000"
+            android:visibility="gone"/>
+
+        <ProgressBar
+            android:id="@+id/bottomProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent" android:layout_height="1dp"
+            android:layout_gravity="bottom"
+            android:max="1000"
+            android:progressDrawable="@drawable/dk_progress_bar"
+            android:visibility="gone"/>
+
+        <LinearLayout android:id="@+id/speedMenu"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="right|center_vertical"
+            android:orientation="vertical"
+            android:background="#99000000"
+            android:visibility="gone"/>
+
+        <LinearLayout android:id="@+id/controlsOverlay"
+            android:layout_width="match_parent" android:layout_height="46dp"
+            android:layout_gravity="bottom"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:background="@drawable/dk_bottom_bg">
+
+            <TextView android:id="@+id/btnToggle"
+                android:layout_width="46dp" android:layout_height="46dp"
+                android:gravity="center"
+                android:text="▶" android:textColor="#FFFFFF" android:textSize="18sp"/>
+
+            <TextView android:id="@+id/btnRec"
+                android:layout_width="46dp" android:layout_height="46dp"
+                android:gravity="center"
+                android:text="⏺" android:textColor="#FF5252" android:textSize="20sp"/>
+
+            <TextView android:id="@+id/tvTime"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="00:00" android:textColor="#FFFFFF" android:textSize="14sp"/>
+
+            <SeekBar android:id="@+id/seek"
+                android:layout_width="0dp" android:layout_height="40dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginLeft="10dp" android:layout_marginRight="20dp"
+                android:layout_weight="1"
+                android:background="@null"
+                android:max="1000" android:maxHeight="2dp" android:minHeight="2dp"
+                android:paddingLeft="0dp" android:paddingRight="0dp"
+                android:progressDrawable="@drawable/dk_progress_bar"
+                android:thumb="@drawable/dk_seek_thumb" android:thumbOffset="0dp"/>
+
+            <TextView android:id="@+id/tvTotal"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="00:00" android:textColor="#FFFFFF" android:textSize="14sp"/>
+
+            <TextView android:id="@+id/tvSpeed"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginRight="6dp"
+                android:text="倍数" android:textColor="#FFFFFF" android:textSize="14sp"/>
+
+            <ImageView android:id="@+id/btnBg"
+                android:layout_width="46dp" android:layout_height="46dp"
+                android:padding="13dp"
+                android:src="@drawable/ic_headphones"/>
+
+            <TextView android:id="@+id/btnFull"
+                android:layout_width="46dp" android:layout_height="46dp"
+                android:gravity="center"
+                android:text="⛶" android:textColor="#FFFFFF" android:textSize="20sp"/>
+        </LinearLayout>
+    </FrameLayout>
+
+    <WebView
+        android:id="@+id/proxyWeb"
+        android:layout_width="1dp" android:layout_height="1dp"/>
+
+    <LinearLayout android:id="@+id/panelBottom"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="@color/bg">
+
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="10dp" android:orientation="horizontal"
+            android:background="#66000000" android:padding="6dp">
+
+            <TextView android:id="@+id/btnPick" style="@style/Chip"
+                android:textColor="#FFFFFF"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:text="📂 本地文件"/>
+            <TextView android:id="@+id/btnSniff" style="@style/Chip"
+                android:textColor="#FFFFFF"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:layout_marginLeft="8dp"
+                android:text="🔍 网页解析"/>
+            <TextView android:id="@+id/tvPlayState"
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_marginLeft="8dp"
+                android:text="…" android:textColor="@color/textSub" android:textSize="12sp"
+                android:maxLines="2" android:ellipsize="end"/>
+            <TextView android:id="@+id/btnStop" style="@style/Chip"
+                android:textColor="#FFFFFF"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:layout_marginLeft="8dp"
+                android:text="⏹ 停止"/>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

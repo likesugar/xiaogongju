@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg">
+
+    <ScrollView
+        android:layout_width="match_parent" android:layout_height="match_parent"
+        android:fillViewport="true" android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <!-- 用药提醒工具卡 -->
+            <LinearLayout android:id="@+id/cardMeds"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:background="@drawable/bg_card" android:orientation="vertical"
+                android:padding="20dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:gravity="center_vertical">
+                    <TextView
+                        android:layout_width="46dp" android:layout_height="46dp"
+                        android:background="@drawable/bg_btn"
+                        android:text="💊" android:textSize="22sp" android:gravity="center"/>
+                    <TextView
+                        android:layout_width="0dp" android:layout_height="wrap_content"
+                        android:layout_weight="1" android:layout_marginLeft="12dp"
+                        android:text="用药提醒" android:textSize="17sp"
+                        android:textStyle="bold" android:textColor="@color/textMain"/>
+                    <TextView android:text="›" android:textSize="20sp"
+                        android:textColor="#C3CAD6"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                </LinearLayout>
+
+                <TextView android:id="@+id/tvNextDose"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp" android:textSize="14sp"
+                    android:textColor="@color/textSub" android:text="…"/>
+            </LinearLayout>
+
+            <!-- VLC 播放器工具卡 -->
+            <LinearLayout android:id="@+id/cardPlayer"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_card" android:orientation="vertical"
+                android:padding="20dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:gravity="center_vertical">
+                    <TextView
+                        android:layout_width="46dp" android:layout_height="46dp"
+                        android:background="@drawable/bg_btn"
+                        android:text="🎬" android:textSize="22sp" android:gravity="center"/>
+                    <TextView
+                        android:layout_width="0dp" android:layout_height="wrap_content"
+                        android:layout_weight="1" android:layout_marginLeft="12dp"
+                        android:text="VLC 播放器" android:textSize="17sp"
+                        android:textStyle="bold" android:textColor="@color/textMain"/>
+                    <TextView android:text="›" android:textSize="20sp"
+                        android:textColor="#C3CAD6"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp" android:textSize="14sp"
+                    android:textColor="@color/textSub"
+                    android:text="本地视频 / 音频 / 网络直播流（m3u8 等）"/>
+            </LinearLayout>
+
+            <!-- 助眠小屋 -->
+            <LinearLayout
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_card" android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="🎧 助眠小屋 · 白噪音" android:textSize="17sp"
+                    android:textStyle="bold" android:textColor="@color/textMain"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp" android:orientation="horizontal">
+                    <TextView android:id="@+id/tvNoiseState"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:textColor="@color/textSub" android:textSize="13sp"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp" android:orientation="horizontal">
+                    <TextView android:id="@+id/noiseRain" style="@style/Chip"
+                        android:layout_width="0dp" android:layout_weight="1"
+                        android:text="🌧️ 雨声"/>
+                    <TextView android:id="@+id/noiseWave" style="@style/Chip"
+                        android:layout_width="0dp" android:layout_weight="1"
+                        android:layout_marginLeft="8dp"
+                        android:text="🌊 海浪"/>
+                </LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp" android:orientation="horizontal">
+                    <TextView android:id="@+id/noiseFire" style="@style/Chip"
+                        android:layout_width="0dp" android:layout_weight="1"
+                        android:text="🔥 篝火"/>
+                    <TextView android:id="@+id/noiseWind" style="@style/Chip"
+                        android:layout_width="0dp" android:layout_weight="1"
+                        android:layout_marginLeft="8dp"
+                        android:text="🍃 风声"/>
+                </LinearLayout>
+
+                <TextView android:id="@+id/btnStopNoise" style="@style/Chip"
+                    android:layout_width="match_parent" android:layout_marginTop="8dp"
+                    android:text="⏹ 停止播放"/>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

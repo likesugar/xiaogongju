@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg">
+
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="56dp"
+        android:background="@color/blue2"
+        android:gravity="center_vertical"
+        android:paddingLeft="8dp" android:paddingRight="16dp">
+        <TextView android:id="@+id/btnBack"
+            android:layout_width="40dp" android:layout_height="match_parent"
+            android:text="‹" android:textColor="#FFFFFF"
+            android:textSize="26sp" android:gravity="center"/>
+        <TextView
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="用药计划" android:textColor="#FFFFFF"
+            android:textSize="18sp" android:textStyle="bold"/>
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true" android:scrollbars="none">
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="18dp">
+            <LinearLayout android:id="@+id/listContainer"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical"/>
+            <TextView android:id="@+id/tvEmpty"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="还没有计划，点下面按钮添加 🌱"
+                android:gravity="center" android:padding="24dp"
+                android:textColor="@color/textSub" android:textSize="14sp"/>
+        </LinearLayout>
+    </ScrollView>
+
+    <TextView android:id="@+id/btnAdd"
+        android:layout_width="match_parent" android:layout_height="54dp"
+        android:layout_margin="18dp"
+        android:background="@drawable/bg_btn"
+        android:text="＋ 新增用药计划" android:textColor="#FFFFFF"
+        android:textSize="16sp" android:textStyle="bold" android:gravity="center"/>
+</LinearLayout>
