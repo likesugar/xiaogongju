@@ -337,6 +337,13 @@ public class PlayerActivity extends Activity {
         });
 
         // ⏺ 单键同步：播放中即录制；停止=保存
+        findViewById(R.id.btnSniff).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                try { startActivityForResult(new Intent(PlayerActivity.this, SnifferActivity.class), 2); }
+                catch (Throwable t) { showError("打开解析失败", t); }
+            }
+        });
+
         findViewById(R.id.btnPick).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 try {
