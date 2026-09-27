@@ -30,15 +30,13 @@
             android:layout_width="match_parent" android:layout_height="match_parent"
             android:background="#000000"/>
 
-        <ProgressBar
-            android:id="@+id/loading"
+        <ProgressBar android:id="@+id/loading"
             android:layout_width="50dp" android:layout_height="50dp"
             android:layout_gravity="center"
             android:indeterminateDuration="2000"
             android:visibility="gone"/>
 
-        <ProgressBar
-            android:id="@+id/bottomProgress"
+        <ProgressBar android:id="@+id/bottomProgress"
             style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent" android:layout_height="1dp"
             android:layout_gravity="bottom"
@@ -64,11 +62,6 @@
                 android:layout_width="46dp" android:layout_height="46dp"
                 android:gravity="center"
                 android:text="▶" android:textColor="#FFFFFF" android:textSize="18sp"/>
-
-            <TextView android:id="@+id/btnRec"
-                android:layout_width="46dp" android:layout_height="46dp"
-                android:gravity="center"
-                android:text="⏺" android:textColor="#FF5252" android:textSize="20sp"/>
 
             <TextView android:id="@+id/tvTime"
                 android:layout_width="wrap_content" android:layout_height="wrap_content"
@@ -106,40 +99,26 @@
         </LinearLayout>
     </FrameLayout>
 
-    <WebView
-        android:id="@+id/proxyWeb"
-        android:layout_width="1dp" android:layout_height="1dp"/>
-
-    <LinearLayout android:id="@+id/panelBottom"
+    <LinearLayout android:id="@+id/bottomBar"
         android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:background="@color/bg">
+        android:orientation="horizontal"
+        android:background="#66000000" android:padding="8dp">
 
-        <LinearLayout
-            android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginTop="10dp" android:orientation="horizontal"
-            android:background="#66000000" android:padding="6dp">
+        <TextView android:id="@+id/btnPick"
+            android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="40dp" android:gravity="center"
+            android:text="📂 本地文件" android:textColor="#000000" android:textSize="14sp"/>
 
-            <TextView android:id="@+id/btnPick" style="@style/Chip"
-                android:textColor="#FFFFFF"
-                android:layout_width="0dp" android:layout_weight="1"
-                android:text="📂 本地文件"/>
-            <TextView android:id="@+id/btnSniff" style="@style/Chip"
-                android:textColor="#FFFFFF"
-                android:layout_width="0dp" android:layout_weight="1"
-                android:layout_marginLeft="8dp"
-                android:text="🔍 网页解析"/>
-            <TextView android:id="@+id/tvPlayState"
-                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                android:layout_marginLeft="8dp"
-                android:text="…" android:textColor="@color/textSub" android:textSize="12sp"
-                android:maxLines="2" android:ellipsize="end"/>
-            <TextView android:id="@+id/btnStop" style="@style/Chip"
-                android:textColor="#FFFFFF"
-                android:layout_width="0dp" android:layout_weight="1"
-                android:layout_marginLeft="8dp"
-                android:text="⏹ 停止"/>
-        </LinearLayout>
+        <TextView android:id="@+id/btnSniff"
+            android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="40dp" android:gravity="center"
+            android:layout_marginLeft="10dp"
+            android:text="🔍 网页解析" android:textColor="#000000" android:textSize="14sp"/>
     </LinearLayout>
+
+    <TextView android:id="@+id/tvPlayState"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:background="#66000000" android:padding="6dp"
+        android:text="" android:textColor="#AAB4C0" android:textSize="12sp"
+        android:maxLines="1" android:ellipsize="end"/>
 </LinearLayout>

@@ -49,7 +49,7 @@ public class PlayerActivity extends Activity {
     private LinearLayout speedMenu;
     private LinearLayout speedList;
     private float curSpeed = 1.0f;
-    private WebView proxyWeb;
+
     private boolean proxyOn = false;
     private static final java.util.regex.Pattern MEDIA_URL = java.util.regex.Pattern.compile(
         "\\.(m3u8|ts|mp4|flv)(\\?|$)|/stream/|media-worker", java.util.regex.Pattern.CASE_INSENSITIVE);
@@ -64,6 +64,7 @@ public class PlayerActivity extends Activity {
         "},800);})();";
 
     private String currentMediaUrl = "-";
+    private String currentUrl = null;
     
 
     private void refreshSpeedMenu() {
@@ -82,7 +83,7 @@ public class PlayerActivity extends Activity {
 
     private boolean backgroundMode = false;
     private boolean fullscreen = false;
-    private View headerBar, panelBottom, videoContainer, controlsOverlay;
+    private View headerBar, bottomBar, videoContainer, controlsOverlay;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -167,13 +168,10 @@ public class PlayerActivity extends Activity {
             btnToggle = findViewById(R.id.btnToggle);
             btnBg = findViewById(R.id.btnBg);
             tvPlayState = findViewById(R.id.tvPlayState);
-            tvRecState = findViewById(R.id.tvPlayState);
-            btnRec = findViewById(R.id.btnRec);
-            proxyWeb = findViewById(R.id.proxyWeb);
-            initProxyWeb();
+
             loading = findViewById(R.id.loading);
             headerBar = findViewById(R.id.headerBar);
-            panelBottom = findViewById(R.id.panelBottom);
+            bottomBar = findViewById(R.id.bottomBar);
             videoContainer = findViewById(R.id.videoContainer);
             controlsOverlay = findViewById(R.id.controlsOverlay);
             bind();
@@ -248,154 +246,6 @@ public class PlayerActivity extends Activity {
         }});
     }
 
-    private void initProxyWeb() {
-        try {
-            WebSettings ws = proxyWeb.getSettings();
-            ws.setJavaScriptEnabled(true);
-            ws.setDomStorageEnabled(true);
-            ws.setMediaPlaybackRequiresUserGesture(false);
-            ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-            proxyWeb.setWebViewClient(new WebViewClient() {
-                @Override
-                public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest req) {
-                    try {
-                        if (!"GET".equalsIgnoreCase(req.getMethod())) return null;
-                        android.net.Uri u = req.getUrl();
-                        if (!"http".equals(u.getScheme()) && !"https".equals(u.getScheme())) return null;
-                        String url = u.toString();
-                        String lp = url.toLowerCase();
-                        // 直播播放列表：取回最新内容喂代理
-                        if (lp.contains("/stream/") && lp.contains("playlist") && !lp.contains(".ts")) {
-                            LiveProxy.fetchLatest(url);
-                            if (LiveProxy.latestBody != null && !proxyOn) {
-                                // 首次内容到达：切代理播放
-                                proxyOn = true;
-                                runOnUiThread(new Runnable() { public void run() {
-                                    setPlayState("直播代理：令牌已拿到，开播");
-                                    play(Uri.parse("http://127.0.0.1:" + LiveProxy.PORT + "/playlist.m3u8"));
-                                }});
-                            }
-                            return null;
-                        }
-                        // HTML 文档（含跨域 iframe）：注入自动点播+静音
-                        String path = u.getPath();
-                        boolean looksHtml = path == null || path.isEmpty() || path.endsWith("/")
-                            || !path.substring(path.lastIndexOf('/') + 1).contains(".");
-                        if (looksHtml) {
-                            try {
-                                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-                                c.setConnectTimeout(8000); c.setReadTimeout(8000);
-                                c.setRequestProperty("User-Agent", proxyWeb.getSettings().getUserAgentString());
-                                int code = c.getResponseCode();
-                                String ct = c.getContentType();
-                                if (code == 200 && ct != null && ct.contains("text/html")) {
-                                    java.io.InputStream in = c.getInputStream();
-                                    java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
-                                    byte[] buf = new byte[8192]; int n;
-                                    while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
-                                    in.close();
-                                    String html = bo.toString("UTF-8");
-                                    if (html.contains("</head>")) html = html.replace("</head>", "<script>" + FRAME_JS + "</script></head>");
-                                    else html = "<script>" + FRAME_JS + "</script>" + html;
-                                    return new android.webkit.WebResourceResponse("text/html", "utf-8",
-                                        new java.io.ByteArrayInputStream(html.getBytes("UTF-8")));
-                                }
-                                c.disconnect();
-                            } catch (Throwable ignored) {}
-                        }
-                    } catch (Throwable ignored) {}
-                    return null;
-                }
-            });
-        } catch (Throwable t) { showError("代理初始化失败", t); }
-    }
-
-    private android.widget.TextView tvRecState, btnRec;
-    private volatile com.arthenica.ffmpegkit.FFmpegSession recSession = null;
-    private volatile java.io.File recTmp = null;
-    private String currentUrl = null;
-
-    private volatile boolean recRunning = false;
-    private volatile String recLogTail = "";
-
-    private void toggleRecord() {
-        if (recRunning) {
-            // 真正的停止：取消会话并合并（无论会话是否还活着）
-            recRunning = false;
-            try { if (recSession != null) com.arthenica.ffmpegkit.FFmpegKit.cancel(recSession.getSessionId()); } catch (Throwable ignored) {}
-            if (recSession == null) mergeRecording("手动停止（会话已提前结束）");
-            return;
-        }
-        if (currentUrl == null || currentUrl.isEmpty()) {
-            setPlayState("先播放一个流再录制");
-            return;
-        }
-        java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
-        dir.mkdirs();
-        recTmp = new java.io.File(dir, "rec_tmp_" + System.currentTimeMillis() + ".ts");
-        String[] args = {
-            "-y", "-loglevel", "warning",
-            "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
-            "-rw_timeout", "15000000",
-            "-i", currentUrl,
-            "-c", "copy", "-f", "mpegts",
-            recTmp.getAbsolutePath()
-        };
-        final String stableName = "live_" + Integer.toHexString(currentUrl.hashCode()) + ".ts";
-        btnRec.setText("⏹");
-        setPlayState("录制中…（" + stableName + "）");
-        try {
-            java.io.FileWriter fw = new java.io.FileWriter(new java.io.File(new java.io.File(getExternalFilesDir(null), "录制"), "fflog.txt"), true);
-            fw.write("\n==== 会话开始 " + new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date())
-                + " 输入: " + currentUrl + " ====\n");
-            fw.close();
-        } catch (Exception ignored) {}
-        final String fStable = stableName;
-        recSession = com.arthenica.ffmpegkit.FFmpegKit.executeWithArgumentsAsync(args,
-            new com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback() {
-                public void apply(com.arthenica.ffmpegkit.FFmpegSession session) {
-                    final String rc = String.valueOf(session.getReturnCode());
-                    final String logTail = recLogTail.length() > 120 ? recLogTail.substring(recLogTail.length() - 120) : recLogTail;
-                    mergeRecording("code=" + rc + " " + logTail);
-                }
-            },
-            new com.arthenica.ffmpegkit.LogCallback() {
-                public void apply(com.arthenica.ffmpegkit.Log log) {
-                    recLogTail = recLogTail + log.getMessage();
-                    if (recLogTail.length() > 2000) recLogTail = recLogTail.substring(recLogTail.length() - 1000);
-                    try {
-                        java.io.FileWriter fw = new java.io.FileWriter(
-                            new java.io.File(recTmp.getParentFile(), "fflog.txt"), true);
-                        fw.write(log.getMessage());
-                        fw.close();
-                    } catch (Exception ignored) {}
-                }
-            }, null);
-    }
-
-    private void mergeRecording(String why) {
-        long bytes = recTmp != null && recTmp.exists() ? recTmp.length() : 0;
-        final String stableName = currentUrl == null ? "live.ts" : "live_" + Integer.toHexString(currentUrl.hashCode()) + ".ts";
-        java.io.File stable = recTmp != null ? new java.io.File(recTmp.getParentFile(), stableName) : null;
-        try {
-            java.io.FileInputStream fis = new java.io.FileInputStream(recTmp);
-            java.io.FileOutputStream fos = new java.io.FileOutputStream(stable, true);
-            byte[] b = new byte[65536]; int n;
-            while ((n = fis.read(b)) > 0) fos.write(b, 0, n);
-            fos.close(); fis.close();
-            bytes = stable.length();
-            recTmp.delete();
-        } catch (Exception ignored) {}
-        final long sz = bytes;
-        final String fWhy = why;
-        runOnUiThread(new Runnable() { public void run() {
-            recSession = null;
-            btnRec.setText("⏺");
-            setPlayState("录制结束 " + fWhy + "｜" + stableName + " " + (sz / 1048576) + " MB");
-        }});
-    }
-
-    /** 启动时合并上次录制遗留的 rec_tmp_*.ts（崩溃/异常退出未合并的） */
     private void mergeLeftoverTemps() {
         try {
             java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
@@ -420,32 +270,6 @@ public class PlayerActivity extends Activity {
     private void bind() {
         findViewById(R.id.btnBack).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { finish(); }
-        });
-
-        findViewById(R.id.btnPick).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                try {
-                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-                    i.setType("*/*");
-                    startActivityForResult(i, 1);
-                } catch (Throwable t) {
-                    showError("选择文件失败", t);
-                }
-            }
-        });
-
-        findViewById(R.id.btnSniff).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                try {
-                    startActivityForResult(new Intent(PlayerActivity.this, SnifferActivity.class), 2);
-                } catch (Throwable t) { showError("打开解析失败", t); }
-            }
-        });
-
-        findViewById(R.id.btnStop).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                try { if (player != null) player.stop(); } catch (Throwable t) { showError("停止失败", t); }
-            }
         });
 
         // 点视频区 显示/隐藏 内置控制条（DK：显示后 4 秒自动淡出）
@@ -505,9 +329,7 @@ public class PlayerActivity extends Activity {
         findViewById(R.id.btnFull).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 fullscreen = !fullscreen;
-                headerBar.setVisibility(fullscreen ? View.GONE : View.VISIBLE);
-                panelBottom.setVisibility(fullscreen ? View.GONE : View.VISIBLE);
-                setRequestedOrientation(fullscreen
+                                                setRequestedOrientation(fullscreen
                         ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                         : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
                 showController();
@@ -515,16 +337,14 @@ public class PlayerActivity extends Activity {
         });
 
         // ⏺ 单键同步：播放中即录制；停止=保存
-        btnRec.setOnClickListener(new View.OnClickListener() {
+        findViewById(R.id.btnPick).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                if (SnifferActivity.kbState[0] == 1) {
-                    SnifferActivity.stopKb();
-                    stopService(new Intent(PlayerActivity.this, KbRecordService.class));
-                    setPlayState("录制已停止，文件已保存");
-                } else {
-                    SnifferActivity.startKb(PlayerActivity.this);
-                    startService(new Intent(PlayerActivity.this, KbRecordService.class));
-                    setPlayState("录制中（后台照录，通知栏可停）");
+                try {
+                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                    i.setType("*/*");
+                    startActivityForResult(i, 1);
+                } catch (Throwable t) {
+                    showError("选择文件失败", t);
                 }
             }
         });
