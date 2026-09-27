@@ -199,6 +199,7 @@ public class PlayerActivity extends Activity {
             getWindow().setDecorFitsSystemWindows(false);
             android.view.WindowInsetsController c = getWindow().getInsetsController();
             if (c != null) {
+                c.hide(android.view.WindowInsets.Type.systemBars());
                 c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
         }
