@@ -539,6 +539,13 @@ public class PlayerActivity extends Activity {
         } catch (Throwable ignored) {}
     }
 
+    private void showError(String title, Throwable t) {
+        StringBuilder sb = new StringBuilder(title + "\n" + t + "\n");
+        Throwable c = t.getCause();
+        while (c != null) { sb.append("Caused by: ").append(c).append("\n"); c = c.getCause(); }
+        setPlayState(sb.toString());
+    }
+
     private void toggleRec() {
         String u = currentMediaUrl;
         if (u == null || u.isEmpty() || "-".equals(u) || !u.startsWith("http")) {
@@ -548,23 +555,26 @@ public class PlayerActivity extends Activity {
         startRecJob(u);
     }
 
-    private void startRecJob(final String url) {
+    private RecJob startRecJob(final String url) {
         final RecJob job = new RecJob();
         final int jid = ++recSeq;
         job.notifId = 9000 + jid;
         recJobs.put(jid, job);
         acquireWake();
         final String lu = url.toLowerCase();
+        try {
+            java.io.File dir = new java.io.File(getApplicationContext().getExternalFilesDir(null), "录制");
+            if (!dir.exists()) dir.mkdirs();
+            String ext = lu.contains(".flv") ? "flv" : "mp4";
+            job.file = new java.io.File(dir, "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US)
+                .format(new java.util.Date()) + "_" + jid + "." + ext);
+        } catch (Throwable t) { return null; }
+        job.name = job.file.getName();
+        LiveProxy.liveFile = job.file.getAbsolutePath();
         new Thread(new Runnable() {
             public void run() {
                 java.io.FileOutputStream fo = null;
                 try {
-                    java.io.File dir = new java.io.File(getApplicationContext().getExternalFilesDir(null), "录制");
-                    if (!dir.exists()) dir.mkdirs();
-                    String ext = lu.contains(".flv") ? "flv" : "mp4";
-                    job.file = new java.io.File(dir, "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US)
-                        .format(new java.util.Date()) + "_" + jid + "." + ext);
-                    job.name = job.file.getName();
                     showRecNote(job.notifId, "● 录制中 " + jid, job.name + "（点此停止）", jid);
                     android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_LESS_FAVORABLE);
                     java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
@@ -613,6 +623,7 @@ public class PlayerActivity extends Activity {
                 }
             }
         }).start();
+        return job;
         
     }
 
@@ -663,112 +674,36 @@ public class PlayerActivity extends Activity {
     };
 
 
-    // ---------- h265-flv 桥接：Java 拉流写 inPipe，ffmpeg 本地转封装 TS，/live.ts 播放 ----------
-    private String bridgeIn = null;
-    private String bridgeOut = null;
-    private com.arthenica.ffmpegkit.FFmpegSession flvBridge = null;
-    private volatile boolean bridgePulling = false;
-    private java.net.HttpURLConnection bridgeConn = null;
-
-    private void playFlvViaBridge(final String url) {
-        stopFlvBridge();
-        try {
-            bridgeIn = com.arthenica.ffmpegkit.FFmpegKitConfig.registerNewFFmpegPipe(this);
-            bridgeOut = com.arthenica.ffmpegkit.FFmpegKitConfig.registerNewFFmpegPipe(this);
-            LiveProxy.tsPipe = bridgeOut;
-            bridgePulling = true;
-            String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
-            String[] cmd = {"-y", "-hide_banner", "-loglevel", "error",
-                "-analyzeduration", "10M", "-probesize", "10M",
-                "-f", "flv", "-i", bridgeIn,
-                "-c", "copy", "-f", "mpegts", bridgeOut};
-            setPlayState("桥接转封装中…");
-            // Java 拉流（https 由 Java 处理）写入 inPipe
-            new Thread(new Runnable() {
-                public void run() {
-                    java.io.FileOutputStream po = null;
-                    try {
-                        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-                        bridgeConn = c;
-                        c.setConnectTimeout(10000); c.setReadTimeout(15000);
-                        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile");
-                        c.setRequestProperty("Referer", "https://live.douyin.com/");
-                        if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
-                        java.io.InputStream in = c.getInputStream();
-                        po = new java.io.FileOutputStream(bridgeIn);
-                        byte[] b = new byte[32768];
-                        int n;
-                        while (bridgePulling && (n = in.read(b)) > 0) po.write(b, 0, n);
-                        in.close();
-                    } catch (Throwable t) {
-                        try {
-                            java.io.FileWriter fw = new java.io.FileWriter(new java.io.File(getExternalFilesDir(null), "bridge.log"), true);
-                            fw.append("pull: " + t + "\n"); fw.close();
-                        } catch (Throwable ignored) {}
-                    } finally {
-                        try { if (po != null) po.close(); } catch (Throwable ignored) {}
-                        try { if (bridgeConn != null) bridgeConn.disconnect(); } catch (Throwable ignored) {}
+    // ---------- 实时播放：录制(拉流写文件) + 尾随播放同一文件 ----------
+    private void playFlvLive(final String url) {
+        RecJob job = startRecJob(url);
+        if (job == null) { showError("录制启动失败", new Exception("job null")); return; }
+        LiveProxy.liveFile = job.file.getAbsolutePath();
+        setPlayState("实时播放录制流: " + job.name);
+        new Thread(new Runnable() {
+            public void run() {
+                try { Thread.sleep(2000); } catch (Exception ignored) {}
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        play(Uri.parse("http://127.0.0.1:8123/live.flv"));
                     }
-                }
-            }).start();
-            // ffmpeg 本地转封装
-            new Thread(new Runnable() {
-                public void run() {
-                    flvBridge = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(cmd);
-                    try {
-                        java.io.FileWriter fw = new java.io.FileWriter(new java.io.File(getExternalFilesDir(null), "bridge.log"), true);
-                        fw.append("ffmpeg: " + flvBridge.getAllLogsAsString() + "\n"); fw.close();
-                    } catch (Throwable ignored) {}
-                }
-            }).start();
-            new Thread(new Runnable() {
-                public void run() {
-                    try { Thread.sleep(1500); } catch (Exception ignored) {}
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            play(Uri.parse("http://127.0.0.1:8123/live.ts"));
-                        }
-                    });
-                }
-            }).start();
-        } catch (Throwable t) {
-            showError("桥接失败", t);
-        }
+                });
+            }
+        }).start();
     }
 
-    private void stopFlvBridge() {
-        bridgePulling = false;
-        if (flvBridge != null) {
-            try { flvBridge.cancel(); } catch (Throwable ignored) {}
-            flvBridge = null;
-        }
-        try { if (bridgeConn != null) bridgeConn.disconnect(); } catch (Throwable ignored) {}
-        try { if (bridgeIn != null) com.arthenica.ffmpegkit.FFmpegKitConfig.closeFFmpegPipe(bridgeIn); } catch (Throwable ignored) {}
-        try { if (bridgeOut != null) com.arthenica.ffmpegkit.FFmpegKitConfig.closeFFmpegPipe(bridgeOut); } catch (Throwable ignored) {}
-        bridgeIn = null; bridgeOut = null;
-        LiveProxy.tsPipe = null;
-    }
-
+    /** 直连播放 */
     private void play(Uri uri) {
         currentMediaUrl = uri.toString();
         currentUrl = uri.toString();
         setPlayState("开始播放: " + uri);
         try {
-            // h265-flv 直连黑屏 → ffmpeg 转封装 TS 后播放（录制同源已验证）
             String bl = uri.toString().toLowerCase();
             if ((bl.contains(".flv") || bl.contains("douyincdn")) && !"127.0.0.1".equals(uri.getHost())) {
-                playFlvViaBridge(uri.toString());
+                playFlvLive(uri.toString());
                 return;
             }
             ensurePlayer();
-            String lu = uri.toString().toLowerCase();
-            java.util.Map<String, String> hd = new java.util.HashMap<>();
-            if (lu.contains("bilibili") || lu.contains("bilivideo")) {
-                hd.put("Referer", "https://www.bilibili.com/");
-            } else if (lu.contains("douyin") || lu.contains("douyincdn")) {
-                hd.put("Referer", "https://live.douyin.com/");
-            }
-            httpFactory.setDefaultRequestProperties(hd);
             player.setMediaItem(MediaItem.fromUri(uri));
             player.prepare();
             player.play();
@@ -778,55 +713,4 @@ public class PlayerActivity extends Activity {
         }
     }
 
-    private void showMsg(final String msg) {
-        setPlayState(msg);
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        // 默认退到后台就暂停；开了后台播放模式则继续出声
-        if (!backgroundMode && recJobs.isEmpty() && player != null) {
-            try { player.pause(); } catch (Throwable ignored) {}
-        }
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        try {
-            if (player != null && currentMediaUrl != null && !"-".equals(currentMediaUrl)) player.play();
-        } catch (Throwable ignored) {}
-    }
-
-    private void showError(String title, Throwable t) {
-        StringBuilder sb = new StringBuilder(title + "\n" + t + "\n");
-        Throwable c = t.getCause();
-        while (c != null) {
-            sb.append("Caused by: ").append(c).append("\n");
-            c = c.getCause();
-        }
-
-        ScrollView sv = new ScrollView(this);
-        TextView tv = new TextView(this);
-        tv.setText(sb.toString());
-        tv.setTextColor(Color.WHITE);
-        tv.setBackgroundColor(Color.BLACK);
-        tv.setTypeface(Typeface.MONOSPACE);
-        tv.setTextSize(12);
-        tv.setPadding(24, 24, 24, 24);
-        sv.addView(tv);
-        setContentView(sv);
-    }
-
-    @Override
-    protected void onDestroy() {
-        stopAllRec();
-        parseSink = null;
-        if (player != null) { try { player.release(); } catch (Throwable ignored) {} player = null; }
-        super.onDestroy();
-        handler.removeCallbacks(tick);
-        handler.removeCallbacks(fadeOut);
-    }
 }
-
