@@ -70,8 +70,21 @@ public class DouyinActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return false;
+                Uri u = request.getUrl();
+                String s = u.getScheme();
+                if ("http".equals(s) || "https".equals(s)) return false;
+                // snssdk1128://aweme/detail/<id> → 网页版视频页
+                if ("snssdk1128".equals(s) || "snssdk1233".equals(s) || "aweme".equals(s)) {
+                    String path = u.getPath();
+                    Matcher am = Pattern.compile("/detail/(\\d+)").matcher(path == null ? "" : path);
+                    if (am.find()) {
+                        view.loadUrl("https://www.douyin.com/video/" + am.group(1));
+                        return true;
+                    }
+                }
+                return true;   // 其他私有协议忽略
             }
+
 
             @Override
             public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
@@ -143,15 +156,21 @@ public class DouyinActivity extends Activity {
         String raw = etUrl.getText().toString().trim();
         if (raw.length() == 0) return;
         String url;
-        Matcher m = URL_PATTERN.matcher(raw);
-        if (m.find()) {
-            url = m.group().replaceAll("[.,;:!?]+$", "");
-        } else if (raw.matches("\\d+")) {
-            url = "https://live.douyin.com/" + raw;   // 纯数字 → 抖音房间号
+        // snssdk1128://aweme/detail/<id> → 网页版视频页
+        Matcher sm = Pattern.compile("snssdk\\d+://aweme/detail/(\\d+)").matcher(raw);
+        if (sm.find()) {
+            url = "https://www.douyin.com/video/" + sm.group(1);
         } else {
-            return;
+            Matcher m = URL_PATTERN.matcher(raw);
+            if (m.find()) {
+                url = m.group().replaceAll("[.,;:!?]+$", "");
+            } else if (raw.matches("\\d+")) {
+                url = "https://live.douyin.com/" + raw;   // 纯数字 → 抖音房间号
+            } else {
+                return;
+            }
+            if (!url.startsWith("http")) url = "https://" + url;
         }
-        if (!url.startsWith("http")) url = "https://" + url;
         webView.loadUrl(url);
         recordsPanel.setVisibility(View.VISIBLE);
     }
