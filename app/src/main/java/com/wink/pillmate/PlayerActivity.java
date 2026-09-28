@@ -505,7 +505,6 @@ public class PlayerActivity extends Activity {
     }
 
 
-    private java.io.File bridgeFile = null;
 
 
 
@@ -663,11 +662,68 @@ public class PlayerActivity extends Activity {
         }
     };
 
+
+    // ---------- h265-flv 桥接：ffmpeg 转封装 TS，/live.ts 流式播放 ----------
+    private java.io.File bridgeFile = null;
+    private com.arthenica.ffmpegkit.FFmpegSession flvBridge = null;
+
+    private void playFlvViaBridge(String url) {
+        stopFlvBridge();
+        try {
+            bridgeFile = new java.io.File(getCacheDir(), "bridge_" + System.currentTimeMillis() + ".ts");
+            LiveProxy.tsPipe = bridgeFile.getAbsolutePath();
+            LiveProxy.liveTsBytes = 0;
+            String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
+            String[] cmd = {"-hide_banner", "-loglevel", "error",
+                "-headers", headers,
+                "-i", url,
+                "-c", "copy", "-f", "mpegts", bridgeFile.getAbsolutePath()};
+            setPlayState("桥接转封装中…");
+            new Thread(new Runnable() {
+                public void run() {
+                    flvBridge = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(cmd);
+                }
+            }).start();
+            new Thread(new Runnable() {
+                public void run() {
+                    try { Thread.sleep(2500); } catch (Exception ignored) {}
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            if (LiveProxy.liveTsBytes == 0 && flvBridge != null) {
+                                String lg = flvBridge.getAllLogsAsString();
+                                setPlayState("桥接无数据: " + (lg.length() > 200 ? lg.substring(lg.length() - 200) : lg));
+                            } else {
+                                play(Uri.parse("http://127.0.0.1:8123/live.ts"));
+                            }
+                        }
+                    });
+                }
+            }).start();
+        } catch (Throwable t) {
+            showError("桥接失败", t);
+        }
+    }
+
+    private void stopFlvBridge() {
+        if (flvBridge != null) {
+            try { flvBridge.cancel(); } catch (Throwable ignored) {}
+            flvBridge = null;
+        }
+        LiveProxy.tsPipe = null;
+        if (bridgeFile != null) { try { bridgeFile.delete(); } catch (Throwable ignored) {} bridgeFile = null; }
+    }
+
     private void play(Uri uri) {
         currentMediaUrl = uri.toString();
         currentUrl = uri.toString();
         setPlayState("开始播放: " + uri);
         try {
+            // h265-flv 直连黑屏 → ffmpeg 转封装 TS 后播放（录制同源已验证）
+            String bl = uri.toString().toLowerCase();
+            if ((bl.contains(".flv") || bl.contains("douyincdn")) && !"127.0.0.1".equals(uri.getHost())) {
+                playFlvViaBridge(uri.toString());
+                return;
+            }
             ensurePlayer();
             String lu = uri.toString().toLowerCase();
             java.util.Map<String, String> hd = new java.util.HashMap<>();
