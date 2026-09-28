@@ -6,10 +6,10 @@ on:
     inputs:
       vc:
         description: 'versionCode'
-        default: '253'
+        default: '259'
       vn:
         description: 'versionName'
-        default: '18.3'
+        default: '18.6'
 
 permissions:
   contents: write    # ★ 必须加，否则无法创建 Release
@@ -34,8 +34,8 @@ jobs:
 
       - name: Build APK
         env:
-          VC: ${{ github.event.inputs.vc || '253' }}
-          VN: ${{ github.event.inputs.vn || '18.3' }}
+          VC: ${{ github.event.inputs.vc || '259' }}
+          VN: ${{ github.event.inputs.vn || '18.6' }}
         run: bash build.sh
 
       - name: Upload APK artifact
