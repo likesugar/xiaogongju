@@ -175,12 +175,14 @@ public class ParseActivity extends Activity {
     // ---------- 解析/停止 切换 ----------
     private boolean parsing = false;
 
-    /** 回车→：只跳转页面（解析未停止时不刷新页面） */
+    /** 回车→：只跳转页面（同链接不重复加载；解析未停止时不刷新页面） */
     private void goNavigate() {
         if (parsing) return;   // 解析没停止 → 不动页面
         String url = normInput();
         if (url == null) return;
         if (isStreamUrl(url)) { addRecord("直播流", url); return; }
+        String cur = webView.getUrl();
+        if (cur != null && cur.startsWith(url)) return;   // 已经在这个页面，不刷新
         webView.loadUrl(url);
     }
 
@@ -201,7 +203,7 @@ public class ParseActivity extends Activity {
         return url;
     }
 
-    /** 解析键：恢复 v13.5 语义——前台跳到目标页(同链接不刷新) + 后台 peanutdl + 宽松嗅探 */
+    /** 解析键：纯后台。链接直接取输入框（空则取当前页），前台页面零刷新 */
     private void triggerParse() {
         if (parsing) {
             stopParse();
@@ -218,12 +220,10 @@ public class ParseActivity extends Activity {
         if (isStreamUrl(url)) { addRecord("直播流", url); parseDone(); return; }
 
         if (url.contains("bilibili.com")) {
-            // v13.5 同款：前台只在换链接时才加载（解析中不刷新页面）
-            String cur = webView.getUrl();
-            if (cur == null || !cur.startsWith(url)) webView.loadUrl(url);
-            resolveBiliViaPeanut(url);   // 后台 peanutdl
-        } else {
-            // 抖音等：前台跳页 + 源码嗅探规则持续生效
+            resolveBiliViaPeanut(url);   // 后台 peanutdl，前台不动
+        }
+        // 非 B站（抖音直播等）：靠前台页面嗅探；仅当当前页不是目标页才加载
+        else {
             String cur = webView.getUrl();
             if (cur == null || !cur.startsWith(url)) webView.loadUrl(url);
         }
