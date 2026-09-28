@@ -217,14 +217,16 @@ public class DouyinActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(bgLive, true);
         bgLive.setWebChromeClient(new WebChromeClient());
         bgLive.setWebViewClient(makeSniffClient());
-        // 后台静音：页面视频不许出声
+        // 页面视频持续压制：暂停+静音（前后台都管），让 VLC 独占流
         final Handler mh = new Handler(Looper.getMainLooper());
         final Runnable muteTask = new Runnable() {
             public void run() {
-                if (bgLive == null) return;
-                bgLive.evaluateJavascript(
-                    "(function(){var m=document.querySelectorAll('video,audio');for(var i=0;i<m.length;i++)m[i].muted=true;})()", null);
-                mh.postDelayed(this, 1200);
+                String js = "(function(){var m=document.querySelectorAll('video,audio');for(var i=0;i<m.length;i++){try{m[i].muted=true;m[i].pause();}catch(e){}}})()";
+                try { webView.evaluateJavascript(js, null); } catch (Throwable ignored) {}
+                if (bgLive != null) {
+                    try { bgLive.evaluateJavascript(js, null); } catch (Throwable ignored) {}
+                }
+                if (bgLive != null || !isFinishing()) mh.postDelayed(this, 1200);
             }
         };
         mh.postDelayed(muteTask, 500);
