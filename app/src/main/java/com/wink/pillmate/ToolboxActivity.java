@@ -102,6 +102,12 @@ public class ToolboxActivity extends Activity {
 
         tvNext = findViewById(R.id.tvNextDose);
 
+        // 版本标识（确认装的是哪个包）
+        try {
+            android.content.pm.PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            android.widget.Toast.makeText(this, "v" + pi.versionName + " (vc" + pi.versionCode + ")", Toast.LENGTH_LONG).show();
+        } catch (Throwable ignored) {}
+
         if (Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != 0) {
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);

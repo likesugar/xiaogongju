@@ -49,6 +49,7 @@ public class ParseActivity extends Activity {
     private boolean parsing = false;
     private boolean bgDone = false;
     private boolean autoPlayed = false;
+    private final java.util.List<String> autoCandidates = new java.util.ArrayList<>();
 
     private static final String UA_MOBILE = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     private static final String UA_DESKTOP = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -416,10 +417,32 @@ public class ParseActivity extends Activity {
 
         list.addView(row, 0);
 
-        // 首条地址自动开播
-        if (!autoPlayed && (rawUrl.startsWith("http") && (isBili || isStreamUrl(rawUrl)))) {
-            autoPlayed = true;
-            handToPlayer(streamUrl);
+        // 自动开播：延迟收集，选最高码率那条
+        if (rawUrl.startsWith("http") && (isBili || isStreamUrl(rawUrl))) {
+            autoCandidates.add(streamUrl);
+            if (!autoPlayed) {
+                autoPlayed = true;
+                new Thread(new Runnable() {
+                    public void run() {
+                        try { Thread.sleep(4000); } catch (Exception ignored) {}
+                        main.post(new Runnable() {
+                            public void run() {
+                                String best = null; long bestBr = -1;
+                                for (String u : autoCandidates) {
+                                    long br = 0;
+                                    Matcher vm = Pattern.compile("biz_vbitrate=(\\d+)").matcher(u);
+                                    if (vm.find()) br = Long.parseLong(vm.group(1));
+                                    Matcher rm = Pattern.compile("ratio=1080p").matcher(u);
+                                    if (rm.find()) br += 10000000;
+                                    if (br > bestBr) { bestBr = br; best = u; }
+                                }
+                                if (best == null && !autoCandidates.isEmpty()) best = autoCandidates.get(0);
+                                if (best != null) handToPlayer(best);
+                            }
+                        });
+                    }
+                }).start();
+            }
         }
     }
 
