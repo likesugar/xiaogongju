@@ -182,7 +182,7 @@ public class RecordActivity extends Activity {
     private void showMenu(View anchor, PlayerActivity.RecJob j, boolean live) {
         PopupMenu pm = new PopupMenu(this, anchor);
         if (live) {
-            pm.getMenu().add("结束录制").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
+            pm.getMenu().add("暂停").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
                 public boolean onMenuItemClick(android.view.MenuItem it) { PlayerActivity.recStop(j.id); rebuild(); return true; }
             });
         } else {
@@ -190,6 +190,14 @@ public class RecordActivity extends Activity {
                 public boolean onMenuItemClick(android.view.MenuItem it) { PlayerActivity.recContinue(j.id); rebuild(); return true; }
             });
         }
+        pm.getMenu().add("结束录制(转MP4)").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
+            public boolean onMenuItemClick(android.view.MenuItem it) {
+                PlayerActivity.recFinish(j.id);
+                Toast.makeText(RecordActivity.this, "正在合并转MP4…", Toast.LENGTH_SHORT).show();
+                rebuild();
+                return true;
+            }
+        });
         pm.getMenu().add("在VLC播放").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
             public boolean onMenuItemClick(android.view.MenuItem it) { play(j); return true; }
         });
@@ -213,15 +221,31 @@ public class RecordActivity extends Activity {
     }
 
     private void openDir() {
+        android.net.Uri dir = android.net.Uri.parse(
+            "content://com.android.externalstorage.documents/document/primary:Movies/录制");
+        // 1) 优先 MT 管理器
         try {
             Intent i = new Intent(Intent.ACTION_VIEW);
-            i.setDataAndType(android.net.Uri.parse(
-                "content://com.android.externalstorage.documents/document/primary:Movies/录制"), "resource/folder");
+            i.setDataAndType(dir, "resource/folder");
+            i.setPackage("com.bin.mt.plus");
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(i);
-        } catch (Throwable t) {
-            Toast.makeText(this, "请在系统文件管理器/MT管理器里找 Movies/录制 目录", Toast.LENGTH_LONG).show();
-        }
+            return;
+        } catch (Throwable ignored) {}
+        // 2) 系统文件管理器
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setDataAndType(dir, "resource/folder");
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(i);
+            return;
+        } catch (Throwable ignored) {}
+        // 3) 拉起 MT 主界面
+        try {
+            Intent i = getPackageManager().getLaunchIntentForPackage("com.bin.mt.plus");
+            if (i != null) { startActivity(i); Toast.makeText(this, "进 Movies/录制 目录", Toast.LENGTH_LONG).show(); return; }
+        } catch (Throwable ignored) {}
+        Toast.makeText(this, "请到 Movies/录制 目录查看", Toast.LENGTH_LONG).show();
     }
 
     private void play(PlayerActivity.RecJob j) {

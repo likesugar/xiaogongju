@@ -566,6 +566,7 @@ public class PlayerActivity extends Activity {
         java.io.File file;
         android.net.Uri storeUri;
         volatile long bytes = 0;
+        volatile boolean finishNow = false;
         int notifId;
         volatile long secs = 0;
         volatile long startTs = 0;
@@ -672,10 +673,11 @@ public class PlayerActivity extends Activity {
                         cv.put(android.provider.MediaStore.Video.Media.IS_PENDING, 0);
                         sCtx.getContentResolver().update(job.storeUri, cv, null, null);
                     } catch (Throwable ignored) {}
-                    if (job.paused || !ended) {
-                        stoppedJobs.put(job.id, job);
+                    if (job.finishNow) {
+                        convertToMp4(job);
+                    } else {
+                        stoppedJobs.put(job.id, job);   // 暂停/断流：可继续
                     }
-                    // 流自然结束：文件已是 flv/mp4 落在 Movies/录制，不做转封装
                 }
             }
         });
@@ -697,6 +699,48 @@ public class PlayerActivity extends Activity {
         RecJob job = stoppedJobs.get(jid);
         if (job == null) return;
         startPull(job, true);
+    }
+
+    /** 结束录制：合并转封装成 mp4（后台执行），完成后从列表移除 */
+    public static void recFinish(int jid) {
+        RecJob live = recJobs.get(jid);
+        if (live != null) {
+            live.finishNow = true;
+            recStop(jid);
+            return;
+        }
+        final RecJob job = stoppedJobs.get(jid);
+        if (job == null) return;
+        stoppedJobs.remove(job.id);
+        new Thread(new Runnable() { public void run() { convertToMp4(job); } }).start();
+    }
+
+    static void convertToMp4(final RecJob job) {
+        try {
+            String src = job.storeUri.toString();
+            java.io.File tmp = new java.io.File(sCtx.getCacheDir(), "conv_" + System.currentTimeMillis() + ".mp4");
+            com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(
+                new String[]{"-y", "-i", src, "-c", "copy", "-movflags", "+faststart", tmp.getAbsolutePath()});
+            if (st.getState().equals(com.arthenica.ffmpegkit.SessionState.COMPLETED) && tmp.length() > 0) {
+                String name = job.name != null ? job.name : "rec.mp4";
+                String mp4Name = (name.endsWith(".flv") ? name.substring(0, name.length() - 4) : name) + ".mp4";
+                android.content.ContentValues cv = new android.content.ContentValues();
+                cv.put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, mp4Name);
+                cv.put(android.provider.MediaStore.Video.Media.MIME_TYPE, "video/mp4");
+                cv.put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/录制");
+                android.net.Uri out = sCtx.getContentResolver().insert(
+                    android.provider.MediaStore.Video.Media.getContentUri("external_primary"), cv);
+                java.io.InputStream in = new java.io.FileInputStream(tmp);
+                java.io.OutputStream os = sCtx.getContentResolver().openOutputStream(out);
+                byte[] b = new byte[32768]; int n;
+                while ((n = in.read(b)) > 0) os.write(b, 0, n);
+                os.close(); in.close();
+                try { sCtx.getContentResolver().delete(job.storeUri, null, null); } catch (Throwable ignored) {}
+            }
+            tmp.delete();
+        } catch (Throwable t) {
+            try { stoppedJobs.put(job.id, job); } catch (Throwable ignored) {}
+        }
     }
 
     /** 彻底取消：删文件、从列表移除 */
