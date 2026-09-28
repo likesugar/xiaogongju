@@ -1,6 +1,7 @@
 package com.wink.pillmate;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -122,6 +123,7 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        sCtx = this;
         super.onCreate(savedInstanceState);
         final Thread.UncaughtExceptionHandler def = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
@@ -547,30 +549,38 @@ public class PlayerActivity extends Activity {
 
 
     // ---------- 直播录制（纯 Java 拉流写文件，支持多路并行） ----------
-    private static class RecJob {
+    static class RecJob {
+        int id;
         volatile boolean active = true;
+        volatile boolean paused = false;
         volatile java.net.HttpURLConnection conn;
         Thread thread;
         String name;
+        String url;
         java.io.File file;
         int notifId;
+        volatile long secs = 0;
+        volatile long startTs = 0;
     }
-    private static final java.util.concurrent.ConcurrentHashMap<Integer, RecJob> recJobs =
+    public static final java.util.concurrent.ConcurrentHashMap<Integer, RecJob> recJobs =
+        new java.util.concurrent.ConcurrentHashMap<>();
+    public static final java.util.concurrent.ConcurrentHashMap<Integer, RecJob> stoppedJobs =
         new java.util.concurrent.ConcurrentHashMap<>();
     private static volatile int recSeq = 0;
     private static android.os.PowerManager.WakeLock recWake = null;
+    private static Context sCtx;
 
-    private void acquireWake() {
+    private static void acquireWake() {
         try {
-            if (recWake == null) {
-                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(android.content.Context.POWER_SERVICE);
+            if (recWake == null && sCtx != null) {
+                android.os.PowerManager pm = (android.os.PowerManager) sCtx.getSystemService(Context.POWER_SERVICE);
                 recWake = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "pillmate:rec");
                 recWake.acquire(4 * 3600 * 1000L);
             }
         } catch (Throwable ignored) {}
     }
 
-    private void releaseWakeIfIdle() {
+    private static void releaseWakeIfIdle() {
         try {
             if (recJobs.isEmpty() && recWake != null) { recWake.release(); recWake = null; }
         } catch (Throwable ignored) {}
@@ -579,113 +589,139 @@ public class PlayerActivity extends Activity {
     private void toggleRec() {
         String u = currentMediaUrl;
         if (u == null || u.isEmpty() || "-".equals(u) || !u.startsWith("http")) {
-            
+
             return;
         }
         startRecJob(u);
     }
 
     private void startRecJob(final String url) {
-        final RecJob job = new RecJob();
-        final int jid = ++recSeq;
-        job.notifId = 9000 + jid;
-        recJobs.put(jid, job);
+        RecJob job = new RecJob();
+        job.id = ++recSeq;
+        job.notifId = 9000 + job.id;
+        job.url = url;
+        try {
+            java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
+            if (!dir.exists()) dir.mkdirs();
+            String lu = url.toLowerCase();
+            String ext = lu.contains(".flv") ? "flv" : "mp4";
+            job.file = new java.io.File(dir, "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US).format(new java.util.Date()) + "_" + job.id + "." + ext);
+        } catch (Throwable t) { return; }
+        job.name = job.file.getName();
+        startPull(job, false);
+    }
+
+    private static void startPull(final RecJob job, final boolean append) {
+        job.active = true;
+        job.paused = false;
+        job.startTs = System.currentTimeMillis();
+        recJobs.put(job.id, job);
+        stoppedJobs.remove(job.id);
         acquireWake();
-        final String lu = url.toLowerCase();
-        new Thread(new Runnable() {
+        job.thread = new Thread(new Runnable() {
             public void run() {
                 java.io.FileOutputStream fo = null;
+                boolean ended = false;
                 try {
-                    java.io.File dir = new java.io.File(getApplicationContext().getExternalFilesDir(null), "录制");
-                    if (!dir.exists()) dir.mkdirs();
-                    String ext = lu.contains(".flv") ? "flv" : "mp4";
-                    job.file = new java.io.File(dir, "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US)
-                        .format(new java.util.Date()) + "_" + jid + "." + ext);
-                    job.name = job.file.getName();
-                    showRecNote(job.notifId, "● 录制中 " + jid, job.name + "（点此停止）", jid);
-                    android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_LESS_FAVORABLE);
-                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                    showRecNote(job.notifId, "● 录制中 " + job.id, job.name + "（点击回到播放器）");
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(job.url).openConnection();
                     job.conn = c;
                     c.setConnectTimeout(10000);
                     c.setReadTimeout(15000);
-                    String ref = lu.contains("bilibili") ? "https://www.bilibili.com/" : "https://live.douyin.com/";
+                    String lu = job.url.toLowerCase();
                     c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile");
-                    c.setRequestProperty("Referer", ref);
+                    c.setRequestProperty("Referer", lu.contains("bilibili") ? "https://www.bilibili.com/" : "https://live.douyin.com/");
                     if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
                     java.io.InputStream in = c.getInputStream();
-                    fo = new java.io.FileOutputStream(job.file);
-                    byte[] b = new byte[32768];
-                    long total = 0;
-                    int n;
-                    while ((n = in.read(b)) > 0 && job.active) {
-                        fo.write(b, 0, n);
-                        total += n;
-                    }
-                    fo.close(); in.close();
+                    fo = new java.io.FileOutputStream(job.file, append);
+                    byte[] b = new byte[32768]; int n;
+                    while ((n = in.read(b)) > 0 && job.active && !job.paused) fo.write(b, 0, n);
+                    try { fo.close(); } catch (Exception ignored) {} fo = null;
+                    try { in.close(); } catch (Exception ignored) {}
                     try { c.disconnect(); } catch (Throwable ignored) {}
-                    final long sz = total;
-                    final String fname = job.name;
+                    ended = !job.paused;
                 } catch (Throwable t) {
-                    try { if (fo != null) fo.close(); } catch (Exception ignored) {}
-                    try { if (job.conn != null) job.conn.disconnect(); } catch (Exception ignored) {}
-                    final String msg = t.getMessage();
                 } finally {
+                    try { if (fo != null) fo.close(); } catch (Exception ignored) {}
+                    try { if (job.conn != null) job.conn.disconnect(); } catch (Throwable ignored) {}
+                    job.conn = null;
+                    if (job.startTs > 0) job.secs += (System.currentTimeMillis() - job.startTs) / 1000;
+                    job.startTs = 0;
                     job.active = false;
-                    recJobs.remove(jid);
-                    try { nmCancel(job.notifId); } catch (Throwable ignored) {}
+                    recJobs.remove(job.id);
+                    cancelRecNote(job.notifId);
                     releaseWakeIfIdle();
-                    // 转封装 flv→mp4（-c copy 秒级），获得可拖动快进的文件
-                    if (job.file != null && job.file.length() > 0 && job.file.getName().endsWith(".flv")) {
+                    if (job.paused) {
+                        stoppedJobs.put(job.id, job);
+                    } else if (ended && job.file != null && job.file.length() > 0 && job.file.getName().endsWith(".flv")) {
                         try {
                             String mp4 = job.file.getAbsolutePath().replace(".flv", ".mp4");
                             com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(
-                                new String[]{"-y", "-i", job.file.getAbsolutePath(), "-c", "copy",
-                                    "-movflags", "+faststart", mp4});
-                            if (st.getState().equals(com.arthenica.ffmpegkit.SessionState.COMPLETED)
-                                && new java.io.File(mp4).length() > 0) {
+                                new String[]{"-y", "-i", job.file.getAbsolutePath(), "-c", "copy", "-movflags", "+faststart", mp4});
+                            if (st.getState().equals(com.arthenica.ffmpegkit.SessionState.COMPLETED) && new java.io.File(mp4).length() > 0)
                                 job.file.delete();
-                            }
                         } catch (Throwable ignored) {}
+                    } else {
+                        stoppedJobs.put(job.id, job);
                     }
                 }
             }
-        }).start();
-        
+        });
+        job.thread.start();
     }
 
-    private void stopJob(int jid) {
+    /** 停止（暂停）录制：断流、通知取消，文件保留可继续 */
+    public static void recStop(int jid) {
         RecJob job = recJobs.get(jid);
-        if (job != null) {
-            job.active = false;
-            try { if (job.conn != null) job.conn.disconnect(); } catch (Throwable ignored) {}
-            try { if (job.thread != null) job.thread.interrupt(); } catch (Throwable ignored) {}
-        }
+        if (job == null) return;
+        job.paused = true;
+        job.active = false;
+        try { if (job.conn != null) job.conn.disconnect(); } catch (Throwable ignored) {}
+        try { if (job.thread != null) job.thread.interrupt(); } catch (Throwable ignored) {}
+    }
+
+    /** 继续：同一路重新拉流，追加写入同一文件 */
+    public static void recContinue(int jid) {
+        RecJob job = stoppedJobs.get(jid);
+        if (job == null) return;
+        startPull(job, true);
+    }
+
+    /** 彻底取消：删文件、从列表移除 */
+    public static void recCancel(int jid) {
+        RecJob j = recJobs.get(jid);
+        if (j != null) recStop(jid);
+        RecJob job = (j != null) ? j : stoppedJobs.get(jid);
+        if (job == null) return;
+        stoppedJobs.remove(job.id);
+        try { if (job.file != null) job.file.delete(); } catch (Throwable ignored) {}
     }
 
     private void stopAllRec() {
-        for (Integer id : recJobs.keySet().toArray(new Integer[0])) stopJob(id);
+        for (Integer id : recJobs.keySet().toArray(new Integer[0])) recStop(id);
     }
 
-    private void nmCancel(int id) {
+    private static void cancelRecNote(int id) {
         try {
-            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            android.app.NotificationManager nm = (android.app.NotificationManager) sCtx.getSystemService(Context.NOTIFICATION_SERVICE);
             nm.cancel(id);
         } catch (Throwable ignored) {}
     }
 
-    private void showRecNote(int id, String title, String text, int jid) {
+    /** 录制通知：点击 → 回到 VLC 播放器；通知栏不做停止 */
+    private static void showRecNote(int id, String title, String text) {
         try {
-            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            android.app.NotificationManager nm = (android.app.NotificationManager) sCtx.getSystemService(Context.NOTIFICATION_SERVICE);
             android.app.NotificationChannel ch = new android.app.NotificationChannel("rec", "直播录制", android.app.NotificationManager.IMPORTANCE_LOW);
             nm.createNotificationChannel(ch);
-            android.app.Notification nt = new android.app.Notification.Builder(this, "rec")
+            android.app.Notification nt = new android.app.Notification.Builder(sCtx, "rec")
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setOngoing(true)
-                .setContentIntent(android.app.PendingIntent.getBroadcast(this, jid,
-                    new android.content.Intent("pillmate_stop_rec").setPackage(getPackageName()).putExtra("jid", jid),
-                    android.app.PendingIntent.FLAG_IMMUTABLE))
+                .setContentIntent(android.app.PendingIntent.getActivity(sCtx, id,
+                    new Intent(sCtx, PlayerActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT))
                 .build();
             nm.notify(id, nt);
         } catch (Throwable ignored) {}
@@ -695,7 +731,7 @@ public class PlayerActivity extends Activity {
     private android.content.BroadcastReceiver stopRecReceiver = new android.content.BroadcastReceiver() {
         public void onReceive(android.content.Context ctx, android.content.Intent i) {
             int jid = i.getIntExtra("jid", -1);
-            if (jid > 0) stopJob(jid);
+            if (jid > 0) recStop(jid);
         }
     };
 
