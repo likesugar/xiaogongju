@@ -217,16 +217,14 @@ public class DouyinActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(bgLive, true);
         bgLive.setWebChromeClient(new WebChromeClient());
         bgLive.setWebViewClient(makeSniffClient());
-        // 页面视频持续压制：暂停+静音（前后台都管），让 VLC 独占流
+        // 后台 WebView 常驻静音（无头不出声，不影响前台浏览）
         final Handler mh = new Handler(Looper.getMainLooper());
         final Runnable muteTask = new Runnable() {
             public void run() {
-                String js = "(function(){var m=document.querySelectorAll('video,audio');for(var i=0;i<m.length;i++){try{m[i].muted=true;m[i].pause();}catch(e){}}})()";
-                try { webView.evaluateJavascript(js, null); } catch (Throwable ignored) {}
-                if (bgLive != null) {
-                    try { bgLive.evaluateJavascript(js, null); } catch (Throwable ignored) {}
-                }
-                if (bgLive != null || !isFinishing()) mh.postDelayed(this, 1200);
+                if (bgLive == null || isFinishing()) return;
+                bgLive.evaluateJavascript(
+                    "(function(){var m=document.querySelectorAll('video,audio');for(var i=0;i<m.length;i++){try{m[i].muted=true;}catch(e){}}})()", null);
+                mh.postDelayed(this, 1200);
             }
         };
         mh.postDelayed(muteTask, 500);
@@ -330,10 +328,12 @@ public class DouyinActivity extends Activity {
         btn.setPadding(28, 12, 28, 12);
         btn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                // 停掉页面播放，把流让给 VLC
+                // 开播瞬间三连击压制页面视频（让 VLC 抢到会话），3 秒后放开页面正常浏览
                 String pj = "(function(){var m=document.querySelectorAll('video');for(var i=0;i<m.length;i++){try{m[i].pause();m[i].removeAttribute('src');m[i].load();}catch(e){}}})()";
-                webView.loadUrl("javascript:" + pj);
-                if (bgLive != null) bgLive.evaluateJavascript(pj, null);
+                for (int d = 0; d < 3; d++) {
+                    webView.postDelayed(() -> webView.loadUrl("javascript:" + pj), d * 900L);
+                    if (bgLive != null) bgLive.postDelayed(() -> bgLive.evaluateJavascript(pj, null), d * 900L);
+                }
                 Intent it = new Intent(DouyinActivity.this, PlayerActivity.class);
                 it.putExtra("autoUrl", streamUrl);
                 startActivity(it);
