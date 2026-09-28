@@ -319,29 +319,10 @@ public class PlayerActivity extends Activity {
             public void onClick(View v) { finish(); }
         });
 
+        registerReceiver(stopRecReceiver, new android.content.IntentFilter("pillmate_stop_rec"));
+
         // 抖哔解析面板：出地址直接开播
         findViewById(R.id.btnDouchi).setOnClickListener(new View.OnClickListener() {
-
-            // 通知栏点击 = 停止录制
-            android.content.BroadcastReceiver stopRec = new android.content.BroadcastReceiver() {
-                public void onReceive(android.content.Context ctx, android.content.Intent i) {
-                    if (recSession != null) {
-                        try { recSession.cancel(); } catch (Throwable ignored) {}
-                        recSession = null;
-                        try {
-                            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-                            nm.cancel(9001);
-                        } catch (Throwable ignored) {}
-                        android.widget.Toast.makeText(PlayerActivity.this, "已停止录制: " + recFilePath, Toast.LENGTH_LONG).show();
-                        recFilePath = null;
-                    }
-                }
-            };
-            {
-                android.content.IntentFilter f = new android.content.IntentFilter("pillmate_stop_rec");
-                f.setPriority(100);
-                registerReceiver(stopRec, f);
-            }
             public void onClick(View v) {
                 parseSink = new ParseSink() {
                     public void onParsed(String url) {
@@ -358,18 +339,7 @@ public class PlayerActivity extends Activity {
         });
 
         findViewById(R.id.btnDl).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                try {
-                    String u = (flvOriginalUrl != null) ? flvOriginalUrl : currentMediaUrl;
-                    if (u == null || u.isEmpty() || "-".equals(u) || !u.startsWith("http")) {
-                        android.widget.Toast.makeText(PlayerActivity.this, "还没有可下载的流", android.widget.Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    toggleLiveRecord(u);
-                } catch (Throwable t) {
-                    android.widget.Toast.makeText(PlayerActivity.this, "下载失败: " + t.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
-                }
-            }
+            public void onClick(View v) { toggleRec(); }
         });
 
         // 点视频区 显示/隐藏 内置控制条（DK：显示后 4 秒自动淡出）
@@ -552,126 +522,120 @@ public class PlayerActivity extends Activity {
         return options;
     }
 
-    /** 硬解开但禁直渲染（官方 HW_ACCELERATION_DECODING 档），治有声无画 */
-    private com.arthenica.ffmpegkit.FFmpegSession flvBridge = null;
-    private int udpPort = 0;
     private java.io.File bridgeFile = null;
-    private String flvOriginalUrl = null;
-    private com.arthenica.ffmpegkit.FFmpegSession recSession = null;
-    private String recFilePath = null;
 
-    /** 直播录制开关：ffmpeg -c copy 存到 files/录制/ */
-    private void toggleLiveRecord(String url) {
-        if (recSession != null) {
-            try { recSession.cancel(); } catch (Throwable ignored) {}
-            recSession = null;
-            android.widget.Toast.makeText(this, "已停止录制: " + recFilePath, Toast.LENGTH_LONG).show();
-            try {
-                android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-                nm.cancel(9001);
-            } catch (Throwable ignored) {}
-            recFilePath = null;
+
+
+
+    // ---------- 直播录制（纯 Java 拉流写文件） ----------
+    private static volatile java.net.HttpURLConnection recConn = null;
+    private static volatile Thread recThread = null;
+    private static volatile boolean recActive = false;
+    private static volatile String recName = null;
+
+    private void toggleRec() {
+        if (recActive) { stopRec(); return; }
+        String u = currentMediaUrl;
+        if (u == null || u.isEmpty() || "-".equals(u) || !u.startsWith("http")) {
+            Toast.makeText(this, "还没有可下载的流", Toast.LENGTH_SHORT).show();
             return;
         }
+        String lu = u.toLowerCase();
+        final String ref = lu.contains("bilibili") ? "https://www.bilibili.com/" : "https://live.douyin.com/";
+        final String url = u;
+        recActive = true;
+        recThread = new Thread(new Runnable() {
+            public void run() {
+                java.io.File out = null;
+                java.io.FileOutputStream fo = null;
+                try {
+                    java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
+                    if (!dir.exists()) dir.mkdirs();
+                    String ext = lu.contains(".flv") ? "flv" : "mp4";
+                    out = new java.io.File(dir, "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US)
+                        .format(new java.util.Date()) + "." + ext);
+                    recName = out.getName();
+                    showRecNote(true, recName);
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                    recConn = c;
+                    c.setConnectTimeout(10000);
+                    c.setReadTimeout(15000);
+                    c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile");
+                    c.setRequestProperty("Referer", ref);
+                    if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
+                    java.io.InputStream in = c.getInputStream();
+                    fo = new java.io.FileOutputStream(out);
+                    byte[] b = new byte[32768];
+                    long total = 0;
+                    int n;
+                    while ((n = in.read(b)) > 0 && recActive) {
+                        fo.write(b, 0, n);
+                        total += n;
+                    }
+                    fo.close(); in.close(); c.disconnect();
+                    final long sz = total;
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            Toast.makeText(PlayerActivity.this, "录制结束: " + recName + " " + (sz / 1024) + "KB", Toast.LENGTH_LONG).show();
+                        }
+                    });
+                } catch (Throwable t) {
+                    try { if (fo != null) fo.close(); } catch (Exception ignored) {}
+                    try { if (recConn != null) recConn.disconnect(); } catch (Exception ignored) {}
+                    final String msg = t.getMessage();
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            Toast.makeText(PlayerActivity.this, "录制中断: " + msg, Toast.LENGTH_LONG).show();
+                        }
+                    });
+                } finally {
+                    recActive = false; recConn = null; recThread = null;
+                    showRecNote(false, null);
+                }
+            }
+        });
+        recThread.start();
+        Toast.makeText(this, "开始录制（通知栏可点停止）", Toast.LENGTH_SHORT).show();
+    }
+
+    private void stopRec() {
+        recActive = false;
+        try { if (recConn != null) recConn.disconnect(); } catch (Throwable ignored) {}
+        try { if (recThread != null) recThread.interrupt(); } catch (Throwable ignored) {}
+        Toast.makeText(this, "已停止录制", Toast.LENGTH_SHORT).show();
+    }
+
+    private void showRecNote(boolean on, String name) {
         try {
-            java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
-            if (!dir.exists()) dir.mkdirs();
-            String ext = url.toLowerCase().contains(".flv") ? "flv" : "mp4";
-            String name = "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US)
-                .format(new java.util.Date()) + "." + ext;
-            java.io.File out = new java.io.File(dir, name);
-            String ref = url.toLowerCase().contains("bilibili") ? "https://www.bilibili.com/" : "https://live.douyin.com/";
-            String headers = "Referer: " + ref + "\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
-            String[] cmd = {"-hide_banner", "-loglevel", "error",
-                "-headers", headers,
-                "-i", url,
-                "-c", "copy",
-                "-y", out.getAbsolutePath()};
-            recFilePath = out.getAbsolutePath();
-            final String fname = name;
-            try {
-                android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-                android.app.NotificationChannel ch = new android.app.NotificationChannel("rec", "直播录制", android.app.NotificationManager.IMPORTANCE_LOW);
-                nm.createNotificationChannel(ch);
+            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            android.app.NotificationChannel ch = new android.app.NotificationChannel("rec", "直播录制", android.app.NotificationManager.IMPORTANCE_LOW);
+            nm.createNotificationChannel(ch);
+            if (on) {
                 android.app.Notification nt = new android.app.Notification.Builder(this, "rec")
                     .setSmallIcon(android.R.drawable.ic_media_play)
                     .setContentTitle("● 录制中")
-                    .setContentText(fname + "（点此停止）")
+                    .setContentText(name + "（点此停止）")
                     .setOngoing(true)
                     .setContentIntent(android.app.PendingIntent.getBroadcast(this, 0,
                         new android.content.Intent("pillmate_stop_rec").setPackage(getPackageName()),
                         android.app.PendingIntent.FLAG_IMMUTABLE))
                     .build();
                 nm.notify(9001, nt);
-            } catch (Throwable ignored) {}
-            new Thread(new Runnable() {
-                public void run() {
-                    recSession = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(cmd);
-                }
-            }).start();
-            android.widget.Toast.makeText(this, "开始录制 → 录制/" + fname + "（再点下载=停止）", Toast.LENGTH_LONG).show();
-        } catch (Throwable t) {
-            android.widget.Toast.makeText(this, "录制失败: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-        }
+            } else {
+                nm.cancel(9001);
+            }
+        } catch (Throwable ignored) {}
     }
 
-    /** h265-in-flv VLC 解不动：ffmpeg-kit 转 TS 推本地 UDP，VLC 播 UDP */
-    private void playFlvViaBridge(String url) {
-        // 同一链接已在桥接中 → 直接复用现有 TS 流，避免重启黑屏
-        if (flvBridge != null && !flvBridge.getState().equals(com.arthenica.ffmpegkit.SessionState.COMPLETED)
-            && !flvBridge.getState().equals(com.arthenica.ffmpegkit.SessionState.FAILED)
-            && url.equals(flvOriginalUrl)) {
-            play(Uri.parse("http://127.0.0.1:8123/live.ts"));
-            return;
+    private android.content.BroadcastReceiver stopRecReceiver = new android.content.BroadcastReceiver() {
+        public void onReceive(android.content.Context ctx, android.content.Intent i) {
+            if (recActive) { recActive = false;
+                try { if (recConn != null) recConn.disconnect(); } catch (Throwable ignored) {} }
         }
-        stopFlvBridge();
-        flvOriginalUrl = url;
-        try {
-            bridgeFile = new java.io.File(getCacheDir(), "bridge_" + System.currentTimeMillis() + ".ts");
-            LiveProxy.liveTsBytes = 0;
-            LiveProxy.tsPipe = bridgeFile.getAbsolutePath();
-            String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
-            String[] cmd = {"-hide_banner", "-loglevel", "info",
-                "-headers", headers,
-                "-i", url,
-                "-c", "copy", "-f", "mpegts", bridgeFile.getAbsolutePath()};
-            setPlayState("桥接转封装中…");
-            new Thread(new Runnable() {
-                public void run() {
-                    flvBridge = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(cmd);
-                }
-            }).start();
-            new Thread(new Runnable() {
-                public void run() {
-                    try { Thread.sleep(2500); } catch (Exception ignored) {}
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            if (LiveProxy.liveTsBytes == 0 && flvBridge != null) {
-                                String lg = flvBridge.getAllLogsAsString();
-                                setPlayState("桥接无数据: " + (lg.length() > 200 ? lg.substring(lg.length() - 200) : lg));
-                            } else {
-                                play(Uri.parse("http://127.0.0.1:8123/live.ts"));
-                            }
-                        }
-                    });
-                }
-            }).start();
-        } catch (Throwable t) {
-            showError("桥接失败", t);
-        }
-    }
-
-    private void stopFlvBridge() {
-        if (flvBridge != null) {
-            try { flvBridge.cancel(); } catch (Throwable ignored) {}
-            flvBridge = null;
-        }
-        LiveProxy.tsPipe = null;
-        bridgeFile = null;
-    }
+    };
 
     private void play(Uri uri) {
-        // 回归 v15.1：直连播放（v15.6+ 的桥接链路实际不可用）
+        // 直连播放
         currentMediaUrl = uri.toString();
         currentUrl = uri.toString();
         setPlayState("开始播放: " + uri);
@@ -739,8 +703,9 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        stopFlvBridge();
-        if (recSession != null) { try { recSession.cancel(); } catch (Throwable ignored) {} recSession = null; }
+        recActive = false;
+        try { if (recConn != null) recConn.disconnect(); } catch (Throwable ignored) {}
+        try { unregisterReceiver(stopRecReceiver); } catch (Throwable ignored) {}
         parseSink = null;
         super.onDestroy();
         handler.removeCallbacks(tick);
