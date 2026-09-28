@@ -233,6 +233,9 @@ public class DouyinActivity extends Activity {
         } catch (Throwable ignored) {}
     }
 
+    /** 同一直播间只保留最高码率：biz_vbitrate 大的顶掉小的 */
+    private final java.util.HashMap<String, Object[]> streamBest = new java.util.HashMap<>();
+
     private void addRecord(final String rawUrl) {
         recordId++;
         final int id = recordId;
@@ -241,6 +244,21 @@ public class DouyinActivity extends Activity {
         final String streamUrl = (lu.contains("douyinvod") || lu.contains("/aweme/v1/play") || lu.contains("playwm"))
             ? ("http://127.0.0.1:8123/dy?u=" + android.net.Uri.encode(rawUrl))
             : rawUrl;
+
+        // 直播流按 stream-<id> 分组，只留 biz_vbitrate 最高那条
+        String streamKey = "";
+        long bitrate = -1;
+        Matcher km = Pattern.compile("stream-\\d+").matcher(rawUrl);
+        if (km.find()) streamKey = km.group();
+        Matcher bm = Pattern.compile("biz_vbitrate=(\\d+)").matcher(rawUrl);
+        if (bm.find()) bitrate = Long.parseLong(bm.group(1));
+        if (!streamKey.isEmpty()) {
+            Object[] prev = streamBest.get(streamKey);
+            if (prev != null) {
+                if (bitrate <= (Long) prev[0]) { recordId--; return; }   // 低画质直接丢
+                recordList.removeView((View) prev[1]);   // 新的更高，顶掉旧条
+            }
+        }
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -279,6 +297,7 @@ public class DouyinActivity extends Activity {
         row.addView(btn);
 
         recordList.addView(row, 0);
+        if (!streamKey.isEmpty()) streamBest.put(streamKey, new Object[]{bitrate, row});
         recordsPanel.setVisibility(View.VISIBLE);
     }
 
