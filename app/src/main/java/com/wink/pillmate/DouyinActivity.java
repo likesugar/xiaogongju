@@ -140,9 +140,13 @@ public class DouyinActivity extends Activity {
             }
             if (!url.startsWith("http")) url = "https://" + url;
         }
-        ensureDesktopForLive(url);
-        bgLive.loadUrl(url);      // 后台桌面 UA：抓原画
-        webView.loadUrl(url);     // 前台自己的 UA：看画面
+        // 源码同款：直播间只有桌面 UA 给原画，自动切换后加载页面（页面自己播，记录顺带截流）
+        if (url.contains("live.douyin.com") && !desktopUA) {
+            desktopUA = true;
+            webView.getSettings().setUserAgentString(UA_DESKTOP);
+            ((TextView) findViewById(R.id.btn_switch_ua)).setText("切手机UA");
+        }
+        webView.loadUrl(url);
         recordsPanel.setVisibility(View.VISIBLE);
     }
 
@@ -198,43 +202,6 @@ public class DouyinActivity extends Activity {
                 return null;
             }
         };
-    }
-
-    /** 后台解析：原画只有桌面 UA 给 → 1px 桌面 WebView 负责干活，前台保持不动 */
-    private WebView bgLive = null;
-
-    private void ensureBgLive() {
-        if (bgLive != null) return;
-        bgLive = new WebView(this);
-        WebSettings s = bgLive.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        s.setMediaPlaybackRequiresUserGesture(false);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        s.setUserAgentString(UA_DESKTOP);
-        CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(bgLive, true);
-        bgLive.setWebChromeClient(new WebChromeClient());
-        bgLive.setWebViewClient(makeSniffClient());
-        // 后台 WebView 常驻静音（无头不出声，不影响前台浏览）
-        final Handler mh = new Handler(Looper.getMainLooper());
-        final Runnable muteTask = new Runnable() {
-            public void run() {
-                if (bgLive == null || isFinishing()) return;
-                bgLive.evaluateJavascript(
-                    "(function(){var m=document.querySelectorAll('video,audio');for(var i=0;i<m.length;i++){try{m[i].muted=true;}catch(e){}}})()", null);
-                mh.postDelayed(this, 1200);
-            }
-        };
-        mh.postDelayed(muteTask, 500);
-        ((android.view.ViewGroup) findViewById(android.R.id.content))
-            .addView(bgLive, new android.view.ViewGroup.LayoutParams(1, 1));
-    }
-
-    /** 直播/视频解析都走后台桌面 WebView（原画只有桌面 UA 给），前台保持不动 */
-    private void ensureDesktopForLive(String url) {
-        ensureBgLive();
     }
 
     private void reloadCurrent() {
@@ -330,7 +297,6 @@ public class DouyinActivity extends Activity {
                 // 开播瞬间暂停页面视频，把流让给 VLC
                 String pj = "(function(){var m=document.querySelectorAll('video');for(var i=0;i<m.length;i++){try{m[i].pause();}catch(e){}}})()";
                 webView.loadUrl("javascript:" + pj);
-                if (bgLive != null) bgLive.evaluateJavascript(pj, null);
                 Intent it = new Intent(DouyinActivity.this, PlayerActivity.class);
                 it.putExtra("autoUrl", streamUrl);
                 startActivity(it);
@@ -341,15 +307,6 @@ public class DouyinActivity extends Activity {
         recordList.addView(row, 0);
         if (!streamKey.isEmpty()) streamBest.put(streamKey, new Object[]{bitrate, row});
         recordsPanel.setVisibility(View.VISIBLE);
-    }
-
-    @Override
-    protected void onDestroy() {
-        if (bgLive != null) {
-            try { bgLive.destroy(); } catch (Throwable ignored) {}
-            bgLive = null;
-        }
-        super.onDestroy();
     }
 
     // ---------- 沉浸全屏 ----------
