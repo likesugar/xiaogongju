@@ -195,29 +195,21 @@ public class LiveProxy {
             }
 
             if (path.startsWith("/live.ts")) {
-                // 桥接 TS 流：尾随增长的缓存文件流式吐给 VLC
+                // 桥接 TS 流：outPipe 是 FIFO，阻塞式直读即可（不能轮询 length）
                 try {
                     String f = tsPipe;
                     if (f == null) { writeResp(s, "404 Not Found", "text/plain", "no bridge".getBytes()); return; }
                     OutputStream os = s.getOutputStream();
                     os.write("HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nConnection: close\r\n\r\n".getBytes());
                     os.flush();
-                    java.io.RandomAccessFile raf = new java.io.RandomAccessFile(f, "r");
-                    long pos = 0; long last = System.currentTimeMillis();
+                    java.io.FileInputStream in = new java.io.FileInputStream(f);
                     byte[] rb = new byte[65536];
-                    while (true) {
-                        long len = raf.length();
-                        if (len > pos) {
-                            last = System.currentTimeMillis();
-                            raf.seek(pos);
-                            int rn = raf.read(rb);
-                            if (rn > 0) { os.write(rb, 0, rn); os.flush(); liveTsBytes += rn; pos += rn; }
-                        } else {
-                            if (System.currentTimeMillis() - last > 20000) break;
-                            Thread.sleep(250);
-                        }
+                    int rn;
+                    while ((rn = in.read(rb)) > 0) {
+                        os.write(rb, 0, rn);
+                        os.flush();
                     }
-                    raf.close();
+                    in.close();
                 } catch (Throwable ignored) {}
                 return;
             }
