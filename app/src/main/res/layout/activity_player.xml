@@ -26,9 +26,10 @@
         android:layout_weight="1"
         android:background="#000000">
 
-        <TextureView
+        <org.videolan.libvlc.util.VLCVideoLayout
             android:id="@+id/videoLayout"
-            android:layout_width="match_parent" android:layout_height="match_parent"/>
+            android:layout_width="match_parent" android:layout_height="match_parent"
+            android:background="#000000"/>
 
         <ProgressBar android:id="@+id/loading"
             android:layout_width="50dp" android:layout_height="50dp"
