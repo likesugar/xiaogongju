@@ -313,14 +313,7 @@ public class LiveProxy {
 
             if (path.startsWith("/playlist.m3u8")) {
                 byte[] body = latestBody;
-                // 竞态修复：播放器先到就就地等 refresher 抓到第一份列表（最多 10s）
-                for (int i = 0; body == null && i < 20 && mediaUrl != null; i++) {
-                    try { Thread.sleep(500); } catch (Exception ignored) {}
-                    body = latestBody;
-                }
-                if (body == null) body = httpGet(mediaUrl);   // 最后再亲自补抓一次
                 if (body == null) { writeResp(s, "404 Not Found", "text/plain", "no stream".getBytes()); return; }
-                latestBody = body;
                 StringBuilder sb = new StringBuilder();
                 for (String line : new String(body, "UTF-8").split("\n")) {
                     line = line.trim();

@@ -198,9 +198,17 @@ public class SnifferActivity extends Activity {
             if (!launched) {
                 launched = true;
                 startKb(this); // 开输出流+前台服务
-                Intent it = new Intent(this, PlayerActivity.class);
-                it.putExtra("autoUrl", "http://127.0.0.1:" + LiveProxy.PORT + "/playlist.m3u8");
-                startActivity(it);
+                // 竞态修复：等 refresher 抓到第一份播放列表再拉播放器（最多 8s）
+                final android.content.Context ctx = this;
+                new Thread(new Runnable() { public void run() {
+                    for (int i = 0; i < 16 && LiveProxy.latestBody == null; i++) {
+                        try { Thread.sleep(500); } catch (Exception ignored) {}
+                    }
+                    Intent it = new Intent(ctx, PlayerActivity.class);
+                    it.putExtra("autoUrl", "http://127.0.0.1:" + LiveProxy.PORT + "/playlist.m3u8");
+                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    ctx.startActivity(it);
+                }}).start();
             }
         }
     }
