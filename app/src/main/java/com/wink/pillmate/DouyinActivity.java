@@ -97,7 +97,10 @@ public class DouyinActivity extends Activity {
                     || l.contains("douyinvod") || l.contains("/aweme/v1/play")
                     || l.contains("playwm");
                 if (hit && foundUrls.add(url)) {
-                    final String f = url;
+                    // 画质拉满：ratio=540p/720p/default → 1080p（改写后与原链接都保留）
+                    String hi = url.replaceAll("ratio=[a-zA-Z0-9_]+", "ratio=1080p");
+                    final String f = hi.equals(url) ? url : hi;
+                    foundUrls.add(f);
                     main.post(new Runnable() { public void run() { addRecord(f); } });
                 }
                 return null;
