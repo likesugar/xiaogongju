@@ -681,14 +681,17 @@ public class PlayerActivity extends Activity {
                 m = new Media(libVLC, pfd.getFileDescriptor());
             } else {
                 m = new Media(libVLC, uri);
-                // 本地代理直播流：每秒切片硬解易丢视频帧（声音正常画面冻结）→ 软解
-                if (uri.getHost() != null && uri.getHost().contains("127.0.0.1")) {
+                boolean local = uri.getHost() != null && uri.getHost().contains("127.0.0.1");
+                if (local) {
+                    // 本地桥接 TS(h265)：纯软解，硬解直渲染黑屏
                     m.setHWDecoderEnabled(false, false);
+                    m.addOption(":avcodec-hw=none");
+                } else {
+                    m.setHWDecoderEnabled(true, true);
+                    m.addOption(":no-mediacodec-dr");
+                    m.addOption(":no-omxil-dr");
                 }
             }
-            m.setHWDecoderEnabled(true, true);
-            m.addOption(":no-mediacodec-dr");
-            m.addOption(":no-omxil-dr");
             player.setMedia(m);
             m.release();
             setPlayState("已装载媒体，启动播放…");
