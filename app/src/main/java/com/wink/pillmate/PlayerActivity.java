@@ -681,6 +681,20 @@ public class PlayerActivity extends Activity {
         }
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 从别的页面回来：重新挂视频 Surface 并继续播（治返回黑屏）
+        try {
+            if (player != null && currentMediaUrl != null && !"-".equals(currentMediaUrl)) {
+                if (!player.getVLCVout().areViewsAttached()) {
+                    player.attachViews(videoLayout, null, true, false);
+                }
+                player.play();
+            }
+        } catch (Throwable ignored) {}
+    }
+
     private void showError(String title, Throwable t) {
         StringBuilder sb = new StringBuilder(title + "\n" + t + "\n");
         Throwable c = t.getCause();

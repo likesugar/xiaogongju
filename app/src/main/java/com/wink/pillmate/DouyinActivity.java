@@ -176,7 +176,10 @@ public class DouyinActivity extends Activity {
                     || l.contains("douyinvod") || l.contains("/aweme/v1/play")
                     || l.contains("playwm");
                 if (hit && foundUrls.add(url)) {
-                    String hi = url.replaceAll("ratio=[a-zA-Z0-9_]+", "ratio=1080p");
+                    // 强制最高画质：ratio→1080p；biz_resolution→1088x1920（兼容 %3D 编码）
+                    String hi = url
+                        .replaceAll("ratio=[a-zA-Z0-9_]+", "ratio=1080p")
+                        .replaceAll("biz_resolution(=|%3D|%3d)[a-zA-Z0-9_x]+", "biz_resolution$11088x1920");
                     if (hi.equals(url)) {
                         final String f = url;
                         main.post(new Runnable() { public void run() { addRecord(f); } });
@@ -279,12 +282,7 @@ public class DouyinActivity extends Activity {
     private void addRecord(final String rawUrl) {
         recordId++;
         final int id = recordId;
-        // douyincdn/douyinvod 直链都走本地代理（补 Referer，VLC 直连可能 403/黑屏）
-        String lu = rawUrl.toLowerCase();
-        final String streamUrl = (lu.contains("douyinvod") || lu.contains("/aweme/v1/play") || lu.contains("playwm")
-            || lu.contains("douyincdn") || lu.contains(".flv"))
-            ? ("http://127.0.0.1:8123/dy?u=" + android.net.Uri.encode(rawUrl))
-            : rawUrl;
+        final String streamUrl = rawUrl;   // 直连最高画质原始流
 
         // 直播流按 stream-<id> 分组，只留 biz_vbitrate 最高那条
         String streamKey = "";
