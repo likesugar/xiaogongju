@@ -642,10 +642,6 @@ public class PlayerActivity extends Activity {
         try {
             ensurePlayer();
             player.stop();
-            // 换流必须重挂视频输出，否则第二路黑屏（Surface 与旧媒体解绑后不复用）
-            try {
-                if (player.getVLCVout().areViewsAttached()) player.detachViews();
-            } catch (Throwable ignored) {}
             Media m;
             String scheme = uri.getScheme();
             if ("content".equals(scheme) || "file".equals(scheme)) {
@@ -662,7 +658,6 @@ public class PlayerActivity extends Activity {
             m.release();
             setPlayState("已装载媒体，启动播放…");
             player.play();
-            player.attachViews(videoLayout, null, true, false);
             showController();
         } catch (Throwable t) {
             showError("播放失败", t);
