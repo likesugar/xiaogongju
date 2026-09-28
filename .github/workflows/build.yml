@@ -11,6 +11,9 @@ on:
         description: 'versionName'
         default: '14.2'
 
+permissions:
+  contents: write    # ★ 必须加，否则无法创建 Release
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,3 +43,16 @@ jobs:
         with:
           name: xiaogongju-apk
           path: xiaogongju_v*.apk
+
+      # ★ 新增：自动发布到 Release
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.vn || '14.2' }}-${{ github.run_number }}
+          name: xiaogongju v${{ github.event.inputs.vn || '14.2' }} (build ${{ github.run_number }})
+          files: xiaogongju_v*.apk
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
