@@ -221,26 +221,16 @@ public class RecordActivity extends Activity {
     }
 
     private void openDir() {
-        android.net.Uri dir = android.net.Uri.parse(
-            "content://com.android.externalstorage.documents/document/primary:Movies/录制");
-        // 1) 优先 MT 管理器
+        // 系统目录选择器，直接定位到 Movies/录制（不依赖第三方文件管理器支持）
         try {
-            Intent i = new Intent(Intent.ACTION_VIEW);
-            i.setDataAndType(dir, "resource/folder");
-            i.setPackage("bin.mt.plus");
-            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            android.net.Uri dir = android.net.Uri.parse(
+                "content://com.android.externalstorage.documents/document/primary:Movies/录制");
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            i.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, dir);
             startActivity(i);
             return;
         } catch (Throwable ignored) {}
-        // 2) 系统文件管理器
-        try {
-            Intent i = new Intent(Intent.ACTION_VIEW);
-            i.setDataAndType(dir, "resource/folder");
-            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivity(i);
-            return;
-        } catch (Throwable ignored) {}
-        // 3) 拉起 MT 主界面
+        // 兜底：拉起 MT 主界面
         try {
             Intent i = getPackageManager().getLaunchIntentForPackage("bin.mt.plus");
             if (i != null) { startActivity(i); Toast.makeText(this, "进 Movies/录制 目录", Toast.LENGTH_LONG).show(); return; }
