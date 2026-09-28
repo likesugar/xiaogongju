@@ -268,9 +268,10 @@ public class DouyinActivity extends Activity {
     private void addRecord(final String rawUrl) {
         recordId++;
         final int id = recordId;
-        // douyinvod/playwm 直链需要 Referer → 走本地 /dy 代理
+        // douyincdn/douyinvod 直链都走本地代理（补 Referer，VLC 直连可能 403/黑屏）
         String lu = rawUrl.toLowerCase();
-        final String streamUrl = (lu.contains("douyinvod") || lu.contains("/aweme/v1/play") || lu.contains("playwm"))
+        final String streamUrl = (lu.contains("douyinvod") || lu.contains("/aweme/v1/play") || lu.contains("playwm")
+            || lu.contains("douyincdn") || lu.contains(".flv"))
             ? ("http://127.0.0.1:8123/dy?u=" + android.net.Uri.encode(rawUrl))
             : rawUrl;
 
