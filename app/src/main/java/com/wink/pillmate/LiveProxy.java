@@ -22,6 +22,7 @@ public class LiveProxy {
     public static volatile byte[] latestBody = null;
     public static volatile long latestAt = 0;
     public static volatile String mediaUrl = null;
+    public static volatile String tsPipe = null;
     public static volatile FileOutputStream kbOut = null;
     public static volatile String kbOutName = "";
     public static volatile int pollCount = 0;
@@ -189,6 +190,26 @@ public class LiveProxy {
                 } catch (Throwable e) {
                     writeResp(s, "404 Not Found", "text/plain", "relay err".getBytes());
                 }
+                return;
+            }
+
+            if (path.startsWith("/live.ts")) {
+                // 桥接 TS 流：ffmpeg 写管道，这里流式转发给 VLC
+                try {
+                    String pipe = tsPipe;
+                    if (pipe == null) { writeResp(s, "404 Not Found", "text/plain", "no bridge".getBytes()); return; }
+                    OutputStream os = s.getOutputStream();
+                    os.write("HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nConnection: close\r\n\r\n".getBytes());
+                    os.flush();
+                    java.io.FileInputStream in = new java.io.FileInputStream(pipe);
+                    byte[] rb = new byte[65536];
+                    int rn;
+                    while ((rn = in.read(rb)) > 0) {
+                        os.write(rb, 0, rn);
+                        os.flush();
+                    }
+                    in.close();
+                } catch (Throwable ignored) {}
                 return;
             }
 

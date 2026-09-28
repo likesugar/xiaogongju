@@ -547,6 +547,7 @@ public class PlayerActivity extends Activity {
     /** 硬解开但禁直渲染（官方 HW_ACCELERATION_DECODING 档），治有声无画 */
     private com.arthenica.ffmpegkit.FFmpegSession flvBridge = null;
     private int udpPort = 0;
+    private String bridgePipe = null;
     private String flvOriginalUrl = null;
     private com.arthenica.ffmpegkit.FFmpegSession recSession = null;
     private String recFilePath = null;
@@ -557,6 +558,10 @@ public class PlayerActivity extends Activity {
             try { recSession.cancel(); } catch (Throwable ignored) {}
             recSession = null;
             android.widget.Toast.makeText(this, "已停止录制: " + recFilePath, Toast.LENGTH_LONG).show();
+            try {
+                android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                nm.cancel(9001);
+            } catch (Throwable ignored) {}
             recFilePath = null;
             return;
         }
@@ -574,6 +579,18 @@ public class PlayerActivity extends Activity {
                 "-y", out.getAbsolutePath()};
             recFilePath = out.getAbsolutePath();
             final String fname = name;
+            try {
+                android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                android.app.NotificationChannel ch = new android.app.NotificationChannel("rec", "直播录制", android.app.NotificationManager.IMPORTANCE_LOW);
+                nm.createNotificationChannel(ch);
+                android.app.Notification nt = new android.app.Notification.Builder(this, "rec")
+                    .setSmallIcon(android.R.drawable.ic_media_play)
+                    .setContentTitle("● 录制中")
+                    .setContentText(fname)
+                    .setOngoing(true)
+                    .build();
+                nm.notify(9001, nt);
+            } catch (Throwable ignored) {}
             new Thread(new Runnable() {
                 public void run() {
                     recSession = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(cmd);
@@ -589,35 +606,44 @@ public class PlayerActivity extends Activity {
     private void playFlvViaBridge(String url) {
         stopFlvBridge();
         flvOriginalUrl = url;
-        udpPort = 16000 + (int) (System.currentTimeMillis() % 20000);
-        String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
-        String[] cmd = {"-hide_banner", "-loglevel", "error",
-            "-headers", headers,
-            "-i", url,
-            "-c", "copy", "-f", "mpegts",
-            "udp://127.0.0.1:" + udpPort + "?pkt_size=1316"};
-        setPlayState("桥接转封装中…");
-        new Thread(new Runnable() {
-            public void run() {
-                flvBridge = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(cmd);
-            }
-        }).start();
-        new Thread(new Runnable() {
-            public void run() {
-                try { Thread.sleep(1500); } catch (Exception ignored) {}
-                runOnUiThread(new Runnable() {
-                    public void run() {
-                        play(Uri.parse("udp://127.0.0.1:" + udpPort));
-                    }
-                });
-            }
-        }).start();
+        try {
+            bridgePipe = com.arthenica.ffmpegkit.FFmpegKitConfig.registerNewFFmpegPipe(this);
+            LiveProxy.tsPipe = bridgePipe;
+            String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
+            String[] cmd = {"-hide_banner", "-loglevel", "error",
+                "-headers", headers,
+                "-i", url,
+                "-c", "copy", "-f", "mpegts", bridgePipe};
+            setPlayState("桥接转封装中…");
+            new Thread(new Runnable() {
+                public void run() {
+                    flvBridge = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(cmd);
+                }
+            }).start();
+            new Thread(new Runnable() {
+                public void run() {
+                    try { Thread.sleep(2000); } catch (Exception ignored) {}
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            play(Uri.parse("http://127.0.0.1:8123/live.ts"));
+                        }
+                    });
+                }
+            }).start();
+        } catch (Throwable t) {
+            showError("桥接失败", t);
+        }
     }
 
     private void stopFlvBridge() {
         if (flvBridge != null) {
             try { flvBridge.cancel(); } catch (Throwable ignored) {}
             flvBridge = null;
+        }
+        if (bridgePipe != null) {
+            try { com.arthenica.ffmpegkit.FFmpegKitConfig.closeFFmpegPipe(bridgePipe); } catch (Throwable ignored) {}
+            bridgePipe = null;
+            LiveProxy.tsPipe = null;
         }
     }
 
