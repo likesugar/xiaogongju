@@ -272,7 +272,7 @@ public class SnifferActivity extends Activity {
     /** 判断分片 URL 与 mediaUrl 是否同一画质档位（取 /v3/<id>/<NN>/data 中的 NN 段对比） */
     private static boolean sameQuality(String segUrl, String mediaUrl) {
         try {
-            if (mediaUrl == null) return true;
+            if (mediaUrl == null) return false;   // 未锁定档位前不落盘，杜绝开头混档
             String mSeg = qualitySeg(mediaUrl), sSeg = qualitySeg(segUrl);
             if (mSeg == null || sSeg == null) return true;
             return mSeg.equals(sSeg);
