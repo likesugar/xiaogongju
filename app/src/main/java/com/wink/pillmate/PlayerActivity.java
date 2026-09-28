@@ -469,6 +469,7 @@ public class PlayerActivity extends Activity {
         }
     }
 
+    /** 只创建，不做 attach；attach 统一放到 play() 里做 */
     private void ensurePlayer() {
         if (libVLC == null) {
             libVLC = new LibVLC(this, officialArgs());
@@ -489,7 +490,6 @@ public class PlayerActivity extends Activity {
                     }
                 }
             });
-            // 首次 attachViews 放到 play() 里做，保证 Surface 干净
             player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
         }
     }
@@ -675,13 +675,11 @@ public class PlayerActivity extends Activity {
     };
 
     /**
-     * 播放/换流：
-     * 修复黑屏关键：
-     * 1. 先 stop 停止旧流
-     * 2. 强制 detachViews 清理旧的视频 Surface
-     * 3. 延时 300ms 让 VLC 底层释放 MediaCodec / Surface
-     * 4. 重新 attachViews 拿到干净的新 Surface
-     * 5. setMedia + play
+     * 播放/换流：等价"退出重进"
+     * 1. 停止并彻底释放旧的 MediaPlayer + LibVLC
+     * 2. 延时 400ms 让 VLC 底层线程 / MediaCodec / Surface 完全退出
+     * 3. 重新 new LibVLC + MediaPlayer
+     * 4. attachViews → setMedia → play
      */
     private void play(Uri uri) {
         final String newUrl = uri.toString();
@@ -705,22 +703,25 @@ public class PlayerActivity extends Activity {
         runOnUiThread(new Runnable() {
             public void run() {
                 try {
-                    ensurePlayer();
+                    // ★ 1. 彻底停止并释放旧的播放器和 LibVLC（等价"退出重进"）
+                    if (player != null) {
+                        try { player.stop(); } catch (Throwable ignored) {}
+                        try { if (player.getVLCVout().areViewsAttached()) player.detachViews(); } catch (Throwable ignored) {}
+                        try { player.release(); } catch (Throwable ignored) {}
+                        player = null;
+                    }
+                    if (libVLC != null) {
+                        try { libVLC.release(); } catch (Throwable ignored) {}
+                        libVLC = null;
+                    }
 
-                    // 1. 停止当前播放
-                    try { player.stop(); } catch (Throwable ignored) {}
-
-                    // 2. ★ 强制解绑 Surface，清理视频层
-                    try {
-                        if (player.getVLCVout().areViewsAttached()) {
-                            player.detachViews();
-                        }
-                    } catch (Throwable ignored) {}
-
-                    // 3. 延时让底层彻底释放 Surface / MediaCodec
+                    // ★ 2. 延时让 VLC 底层线程 / MediaCodec / Surface 完全退干净
                     handler.postDelayed(new Runnable() {
                         public void run() {
                             try {
+                                // ★ 3. 重建实例
+                                ensurePlayer();
+
                                 Media m;
                                 String scheme = uri.getScheme();
                                 if ("content".equals(scheme) || "file".equals(scheme)) {
@@ -730,13 +731,13 @@ public class PlayerActivity extends Activity {
                                     m = new Media(libVLC, pfd.getFileDescriptor());
                                 } else {
                                     m = new Media(libVLC, uri);
-                                    // ★ 关闭硬件解码器，避免换流时 MediaCodec 释放不干净导致黑屏
-                                    m.setHWDecoderEnabled(false, false);
-                                    m.addOption(":no-mediacodec");
-                                    m.addOption(":no-omxil");
+                                    // 硬解 + 关 DR（direct rendering）以避免 Surface 冲突
+                                    m.setHWDecoderEnabled(true, true);
+                                    m.addOption(":no-mediacodec-dr");
+                                    m.addOption(":no-omxil-dr");
                                 }
 
-                                // 4. ★ 重新挂 Surface，再 setMedia
+                                // ★ 4. 新实例首次 attach
                                 try {
                                     player.attachViews(videoLayout, null, true, false);
                                     player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
@@ -754,7 +755,7 @@ public class PlayerActivity extends Activity {
                                 switchingMedia = false;
                             }
                         }
-                    }, 300);
+                    }, 400);
 
                 } catch (Throwable t) {
                     switchingMedia = false;
@@ -781,7 +782,7 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        // 从别的页面回来：重新挂视频 Surface 并继续播（治返回黑屏）
+        // 从别的页面回来：确保 Surface 挂着并继续播
         try {
             if (player != null && currentMediaUrl != null && !"-".equals(currentMediaUrl)) {
                 if (!player.getVLCVout().areViewsAttached()) {
