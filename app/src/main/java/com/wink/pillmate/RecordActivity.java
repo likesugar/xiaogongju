@@ -152,7 +152,7 @@ public class RecordActivity extends Activity {
         mid.addView(tvName);
 
         long secs = j.secs + (live && j.startTs > 0 ? (System.currentTimeMillis() - j.startTs) / 1000 : 0);
-        long size = j.file != null && j.file.exists() ? j.file.length() : 0;
+        long size = j.bytes;
         String info = "录制时长: " + fmtDur(secs)
             + "\n录制大小: " + fmtSize(size)
             + "\n录制状态: " + (live ? "录制中" : "暂停录制");
@@ -214,29 +214,21 @@ public class RecordActivity extends Activity {
 
     private void openDir() {
         try {
-            java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
             Intent i = new Intent(Intent.ACTION_VIEW);
             i.setDataAndType(android.net.Uri.parse(
-                "content://com.android.externalstorage.documents/document/primary:Android/data/com.wink.pillmate/files/录制"),
-                "resource/folder");
+                "content://com.android.externalstorage.documents/document/primary:Movies/录制"), "resource/folder");
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(i);
         } catch (Throwable t) {
-            try {
-                Intent i2 = new Intent(Intent.ACTION_VIEW);
-                i2.setDataAndType(android.net.Uri.parse("file://" + getExternalFilesDir(null) + "/录制"), "resource/folder");
-                startActivity(i2);
-            } catch (Throwable t2) {
-                Toast.makeText(this, "没有可用的文件管理器", Toast.LENGTH_SHORT).show();
-            }
+            Toast.makeText(this, "请在系统文件管理器/MT管理器里找 Movies/录制 目录", Toast.LENGTH_LONG).show();
         }
     }
 
     private void play(PlayerActivity.RecJob j) {
         try {
-            if (j.file == null || !j.file.exists()) { Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show(); return; }
+            if (j.storeUri == null) { Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show(); return; }
             Intent it = new Intent(this, PlayerActivity.class);
-            it.putExtra("autoUrl", "file://" + j.file.getAbsolutePath());
+            it.putExtra("autoUrl", j.storeUri.toString());
             startActivity(it);
         } catch (Throwable t) {
             Toast.makeText(this, "打开失败: " + t, Toast.LENGTH_SHORT).show();

@@ -120,7 +120,7 @@
             android:layout_width="0dp" android:layout_weight="1"
             android:layout_height="40dp" android:gravity="center"
             android:layout_marginLeft="10dp"
-            android:text="哔哩解析" android:textColor="#1F2329" android:textSize="15sp" android:textStyle="bold"/>
+            android:text="哔抖解析" android:textColor="#1F2329" android:textSize="15sp" android:textStyle="bold"/>
 
         <TextView android:id="@+id/btnDl"
             android:layout_width="0dp" android:layout_weight="1"

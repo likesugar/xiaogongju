@@ -564,6 +564,8 @@ public class PlayerActivity extends Activity {
         String name;
         String url;
         java.io.File file;
+        android.net.Uri storeUri;
+        volatile long bytes = 0;
         int notifId;
         volatile long secs = 0;
         volatile long startTs = 0;
@@ -608,13 +610,18 @@ public class PlayerActivity extends Activity {
         job.notifId = 9000 + job.id;
         job.url = url;
         try {
-            java.io.File dir = new java.io.File(sCtx.getExternalFilesDir(null), "录制");
-            if (!dir.exists()) dir.mkdirs();
             String lu = url.toLowerCase();
             String ext = lu.contains(".flv") ? "flv" : "mp4";
-            job.file = new java.io.File(dir, "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US).format(new java.util.Date()) + "_" + job.id + "." + ext);
+            String name = "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US).format(new java.util.Date()) + "_" + job.id + "." + ext;
+            android.content.ContentValues cv = new android.content.ContentValues();
+            cv.put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, name);
+            cv.put(android.provider.MediaStore.Video.Media.MIME_TYPE, "mp4".equals(ext) ? "video/mp4" : "video/x-flv");
+            cv.put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/录制");
+            job.storeUri = sCtx.getContentResolver().insert(
+                android.provider.MediaStore.Video.Media.getContentUri("external_primary"), cv);
+            if (job.storeUri == null) return;
         } catch (Throwable t) { return; }
-        job.name = job.file.getName();
+        job.name = job.storeUri.getLastPathSegment();
         startPull(job, false);
     }
 
@@ -640,10 +647,12 @@ public class PlayerActivity extends Activity {
                     c.setRequestProperty("Referer", lu.contains("bilibili") ? "https://www.bilibili.com/" : "https://live.douyin.com/");
                     if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
                     java.io.InputStream in = c.getInputStream();
-                    fo = new java.io.FileOutputStream(job.file, append);
+                    java.io.OutputStream os = sCtx.getContentResolver().openOutputStream(job.storeUri, append ? "wa" : "w");
+                    fo = (os instanceof java.io.FileOutputStream) ? (java.io.FileOutputStream) os : null;
+                    java.io.OutputStream out = fo != null ? fo : os;
                     byte[] b = new byte[32768]; int n;
-                    while ((n = in.read(b)) > 0 && job.active && !job.paused) fo.write(b, 0, n);
-                    try { fo.close(); } catch (Exception ignored) {} fo = null;
+                    while ((n = in.read(b)) > 0 && job.active && !job.paused) { out.write(b, 0, n); job.bytes += n; }
+                    try { out.close(); } catch (Exception ignored) {} fo = null;
                     try { in.close(); } catch (Exception ignored) {}
                     try { c.disconnect(); } catch (Throwable ignored) {}
                     ended = !job.paused;
@@ -658,19 +667,15 @@ public class PlayerActivity extends Activity {
                     recJobs.remove(job.id);
                     cancelRecNote(job.notifId);
                     releaseWakeIfIdle();
-                    if (job.paused) {
-                        stoppedJobs.put(job.id, job);
-                    } else if (ended && job.file != null && job.file.length() > 0 && job.file.getName().endsWith(".flv")) {
-                        try {
-                            String mp4 = job.file.getAbsolutePath().replace(".flv", ".mp4");
-                            com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(
-                                new String[]{"-y", "-i", job.file.getAbsolutePath(), "-c", "copy", "-movflags", "+faststart", mp4});
-                            if (st.getState().equals(com.arthenica.ffmpegkit.SessionState.COMPLETED) && new java.io.File(mp4).length() > 0)
-                                job.file.delete();
-                        } catch (Throwable ignored) {}
-                    } else {
+                    try {   // 收尾：解除 pending，让系统文件管理器可见
+                        android.content.ContentValues cv = new android.content.ContentValues();
+                        cv.put(android.provider.MediaStore.Video.Media.IS_PENDING, 0);
+                        sCtx.getContentResolver().update(job.storeUri, cv, null, null);
+                    } catch (Throwable ignored) {}
+                    if (job.paused || !ended) {
                         stoppedJobs.put(job.id, job);
                     }
+                    // 流自然结束：文件已是 flv/mp4 落在 Movies/录制，不做转封装
                 }
             }
         });
@@ -701,7 +706,7 @@ public class PlayerActivity extends Activity {
         RecJob job = (j != null) ? j : stoppedJobs.get(jid);
         if (job == null) return;
         stoppedJobs.remove(job.id);
-        try { if (job.file != null) job.file.delete(); } catch (Throwable ignored) {}
+        try { if (job.storeUri != null) sCtx.getContentResolver().delete(job.storeUri, null, null); } catch (Throwable ignored) {}
     }
 
     private void stopAllRec() {

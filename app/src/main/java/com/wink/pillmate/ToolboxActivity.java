@@ -94,12 +94,6 @@ public class ToolboxActivity extends Activity {
                 startActivity(new Intent(ToolboxActivity.this, PlayerActivity.class));
             }
         });
-        findViewById(R.id.cardParse).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                startActivity(new Intent(ToolboxActivity.this, DouyinActivity.class));
-            }
-        });
-
 
         tvNext = findViewById(R.id.tvNextDose);
 
