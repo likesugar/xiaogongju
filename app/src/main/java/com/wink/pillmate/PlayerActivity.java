@@ -476,15 +476,16 @@ public class PlayerActivity extends Activity {
     private void ensurePlayer() {
         if (player != null) return;
         player = new IjkMediaPlayer();
-        player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 1);
-        player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-auto-rotate", 1);
-        player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-handle-resolution-change", 1);
-        player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-hevc", 1);
+        // 软解（这台机 h265-flv 硬解会 -10000，VLC 也是关硬解才播的）
         player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 0);
         player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 1);
         player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 0);
-        player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "reconnect", 1);
-        player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "timeout", 15000000);
+        player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max-buffer-size", 15 * 1024 * 1024);
+        player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect", 1);
+        player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "timeout", 10000000);
+        player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "probesize", 32768);
+        player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "analyzeduration", 0);
+        player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "fflags", "nobuffer");
         player.setOnPreparedListener(new IMediaPlayer.OnPreparedListener() {
             public void onPrepared(IMediaPlayer mp) {
                 hideLoading();
