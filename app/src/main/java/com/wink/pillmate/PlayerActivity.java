@@ -722,7 +722,9 @@ public class PlayerActivity extends Activity {
     static void convertToMp4(final RecJob job) {
         job.state = "转换MP4中…";
         try {
-            String src = com.arthenica.ffmpegkit.FFmpegKitConfig.getSafParameterForRead(sCtx, job.storeUri);
+            String src = job.storeUri != null
+                ? com.arthenica.ffmpegkit.FFmpegKitConfig.getSafParameterForRead(sCtx, job.storeUri)
+                : job.file.getAbsolutePath();
             java.io.File tmp = new java.io.File(sCtx.getCacheDir(), "conv_" + System.currentTimeMillis() + ".mp4");
             com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(
                 new String[]{"-y", "-i", src, "-c", "copy", "-movflags", "+faststart", tmp.getAbsolutePath()});
@@ -768,6 +770,29 @@ public class PlayerActivity extends Activity {
             android.app.NotificationManager nm = (android.app.NotificationManager) sCtx.getSystemService(Context.NOTIFICATION_SERVICE);
             nm.cancel(id);
         } catch (Throwable ignored) {}
+    }
+
+    /** 网页解析 KB 抓取任务（挂在下载页显示） */
+    public static RecJob kbJob = null;
+
+    static void registerKb(String name, java.io.File f) {
+        RecJob job = new RecJob();
+        job.id = ++recSeq;
+        job.name = name;
+        job.file = f;
+        job.notifId = -1;
+        kbJob = job;
+    }
+
+    /** KB 结束录制：PTS 重建 + 转 MP4 入 Movies/录制 */
+    public static void kbFinish() {
+        final RecJob job = kbJob;
+        if (job == null) return;
+        new Thread(new Runnable() { public void run() {
+            try { SnifferActivity.stopKb(); } catch (Throwable ignored) {}
+            convertToMp4(job);
+            if (kbJob == job) kbJob = null;
+        }}).start();
     }
 
     /** 单条录制总通知：X路 · 点击进入 VLC 播放器 */

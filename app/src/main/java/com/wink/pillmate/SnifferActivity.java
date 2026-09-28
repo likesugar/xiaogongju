@@ -242,6 +242,7 @@ public class SnifferActivity extends Activity {
             kbOut = new java.io.FileOutputStream(new java.io.File(kbDir.getParentFile(), kbOutName), true);
             LiveProxy.kbOut = kbOut;
             kbState[0] = 1;
+            PlayerActivity.registerKb(kbOutName, new java.io.File(kbDir.getParentFile(), kbOutName));
             kbSeen.clear();
             c.startService(new Intent(c, KbRecordService.class));
         } catch (Exception e) { kbState[0] = 0; }

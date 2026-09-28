@@ -115,6 +115,8 @@ public class RecordActivity extends Activity {
         tvEmpty.setVisibility(n == 0 ? View.VISIBLE : View.GONE);
         for (PlayerActivity.RecJob j : PlayerActivity.recJobs.values()) addRow(list, j, true);
         for (PlayerActivity.RecJob j : PlayerActivity.stoppedJobs.values()) addRow(list, j, false);
+        if (PlayerActivity.kbJob != null)
+            addRow(list, PlayerActivity.kbJob, SnifferActivity.kbState[0] == 1);
     }
 
     private void addRow(LinearLayout parent, final PlayerActivity.RecJob j, final boolean live) {
@@ -152,7 +154,7 @@ public class RecordActivity extends Activity {
         mid.addView(tvName);
 
         long secs = j.secs + (live && j.startTs > 0 ? (System.currentTimeMillis() - j.startTs) / 1000 : 0);
-        long size = j.bytes;
+        long size = j.bytes > 0 ? j.bytes : (j.file != null && j.file.exists() ? j.file.length() : 0);
         String info = "录制时长: " + fmtDur(secs)
             + "\n录制大小: " + fmtSize(size)
             + "\n录制状态: " + (live ? "录制中" : (j.state != null ? j.state : "暂停录制"));
@@ -181,6 +183,25 @@ public class RecordActivity extends Activity {
 
     private void showMenu(View anchor, PlayerActivity.RecJob j, boolean live) {
         PopupMenu pm = new PopupMenu(this, anchor);
+        if (j == PlayerActivity.kbJob) {
+            pm.getMenu().add("结束录制(转MP4)").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
+                public boolean onMenuItemClick(android.view.MenuItem it) { PlayerActivity.kbFinish(); rebuild(); return true; }
+            });
+            pm.getMenu().add("在VLC播放").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
+                public boolean onMenuItemClick(android.view.MenuItem it) { play(j); return true; }
+            });
+            pm.getMenu().add("取消").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
+                public boolean onMenuItemClick(android.view.MenuItem it) {
+                    try { SnifferActivity.stopKb(); } catch (Throwable ignored) {}
+                    try { if (j.file != null) j.file.delete(); } catch (Throwable ignored) {}
+                    PlayerActivity.kbJob = null;
+                    rebuild();
+                    return true;
+                }
+            });
+            pm.show();
+            return;
+        }
         if (live) {
             pm.getMenu().add("暂停").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
                 public boolean onMenuItemClick(android.view.MenuItem it) { PlayerActivity.recStop(j.id); rebuild(); return true; }
@@ -260,9 +281,9 @@ public class RecordActivity extends Activity {
 
     private void play(PlayerActivity.RecJob j) {
         try {
-            if (j.storeUri == null) { Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show(); return; }
+            if (j.storeUri == null && (j.file == null || !j.file.exists())) { Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show(); return; }
             Intent it = new Intent(this, PlayerActivity.class);
-            it.putExtra("autoUrl", j.storeUri.toString());
+            it.putExtra("autoUrl", j.storeUri != null ? j.storeUri.toString() : "file://" + j.file.getAbsolutePath());
             startActivity(it);
         } catch (Throwable t) {
             Toast.makeText(this, "打开失败: " + t, Toast.LENGTH_SHORT).show();
