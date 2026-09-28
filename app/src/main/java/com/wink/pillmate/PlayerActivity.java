@@ -547,7 +547,7 @@ public class PlayerActivity extends Activity {
     /** 硬解开但禁直渲染（官方 HW_ACCELERATION_DECODING 档），治有声无画 */
     private com.arthenica.ffmpegkit.FFmpegSession flvBridge = null;
     private int udpPort = 0;
-    private String bridgePipe = null;
+    private java.io.File bridgeFile = null;
     private String flvOriginalUrl = null;
     private com.arthenica.ffmpegkit.FFmpegSession recSession = null;
     private String recFilePath = null;
@@ -607,13 +607,14 @@ public class PlayerActivity extends Activity {
         stopFlvBridge();
         flvOriginalUrl = url;
         try {
-            bridgePipe = com.arthenica.ffmpegkit.FFmpegKitConfig.registerNewFFmpegPipe(this);
-            LiveProxy.tsPipe = bridgePipe;
+            bridgeFile = new java.io.File(getCacheDir(), "bridge.ts");
+            if (bridgeFile.exists()) bridgeFile.delete();
+            LiveProxy.tsPipe = bridgeFile.getAbsolutePath();
             String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
-            String[] cmd = {"-hide_banner", "-loglevel", "error",
+            String[] cmd = {"-hide_banner", "-loglevel", "info",
                 "-headers", headers,
                 "-i", url,
-                "-c", "copy", "-f", "mpegts", bridgePipe};
+                "-c", "copy", "-f", "mpegts", bridgeFile.getAbsolutePath()};
             setPlayState("桥接转封装中…");
             new Thread(new Runnable() {
                 public void run() {
@@ -622,10 +623,15 @@ public class PlayerActivity extends Activity {
             }).start();
             new Thread(new Runnable() {
                 public void run() {
-                    try { Thread.sleep(2000); } catch (Exception ignored) {}
+                    try { Thread.sleep(2500); } catch (Exception ignored) {}
                     runOnUiThread(new Runnable() {
                         public void run() {
-                            play(Uri.parse("http://127.0.0.1:8123/live.ts"));
+                            if (LiveProxy.liveTsBytes == 0 && flvBridge != null) {
+                                String lg = flvBridge.getAllLogsAsString();
+                                setPlayState("桥接无数据: " + (lg.length() > 200 ? lg.substring(lg.length() - 200) : lg));
+                            } else {
+                                play(Uri.parse("http://127.0.0.1:8123/live.ts"));
+                            }
                         }
                     });
                 }
@@ -640,11 +646,8 @@ public class PlayerActivity extends Activity {
             try { flvBridge.cancel(); } catch (Throwable ignored) {}
             flvBridge = null;
         }
-        if (bridgePipe != null) {
-            try { com.arthenica.ffmpegkit.FFmpegKitConfig.closeFFmpegPipe(bridgePipe); } catch (Throwable ignored) {}
-            bridgePipe = null;
-            LiveProxy.tsPipe = null;
-        }
+        LiveProxy.tsPipe = null;
+        if (bridgeFile != null) { try { bridgeFile.delete(); } catch (Throwable ignored) {} bridgeFile = null; }
     }
 
     private void play(Uri uri) {

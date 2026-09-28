@@ -23,6 +23,7 @@ public class LiveProxy {
     public static volatile long latestAt = 0;
     public static volatile String mediaUrl = null;
     public static volatile String tsPipe = null;
+    public static volatile long liveTsBytes = 0;
     public static volatile FileOutputStream kbOut = null;
     public static volatile String kbOutName = "";
     public static volatile int pollCount = 0;
@@ -194,21 +195,29 @@ public class LiveProxy {
             }
 
             if (path.startsWith("/live.ts")) {
-                // 桥接 TS 流：ffmpeg 写管道，这里流式转发给 VLC
+                // 桥接 TS 流：尾随增长的缓存文件流式吐给 VLC
                 try {
-                    String pipe = tsPipe;
-                    if (pipe == null) { writeResp(s, "404 Not Found", "text/plain", "no bridge".getBytes()); return; }
+                    String f = tsPipe;
+                    if (f == null) { writeResp(s, "404 Not Found", "text/plain", "no bridge".getBytes()); return; }
                     OutputStream os = s.getOutputStream();
                     os.write("HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nConnection: close\r\n\r\n".getBytes());
                     os.flush();
-                    java.io.FileInputStream in = new java.io.FileInputStream(pipe);
+                    java.io.RandomAccessFile raf = new java.io.RandomAccessFile(f, "r");
+                    long pos = 0; long last = System.currentTimeMillis();
                     byte[] rb = new byte[65536];
-                    int rn;
-                    while ((rn = in.read(rb)) > 0) {
-                        os.write(rb, 0, rn);
-                        os.flush();
+                    while (true) {
+                        long len = raf.length();
+                        if (len > pos) {
+                            last = System.currentTimeMillis();
+                            raf.seek(pos);
+                            int rn = raf.read(rb);
+                            if (rn > 0) { os.write(rb, 0, rn); os.flush(); liveTsBytes += rn; pos += rn; }
+                        } else {
+                            if (System.currentTimeMillis() - last > 20000) break;
+                            Thread.sleep(250);
+                        }
                     }
-                    in.close();
+                    raf.close();
                 } catch (Throwable ignored) {}
                 return;
             }
