@@ -96,6 +96,10 @@ public class SnifferActivity extends Activity {
                     if (!"http".equals(u.getScheme()) && !"https".equals(u.getScheme())) return null;
                     String url = u.toString();
                     if (kbState[0] == 1 && kbSeen.add(url) && url.toLowerCase().contains(".ts")) {
+                        // 只存当前锁定档位：URL 档位段（/NN/data）必须与 mediaUrl 一致，否则 ABR 混流毁文件
+                        if (!sameQuality(url, LiveProxy.mediaUrl)) {
+                            kblog("跳过异档分片 " + url);
+                        } else {
                         final long __t0 = System.currentTimeMillis();
                         final java.util.Map<String, String> __hdrs = request.getRequestHeaders();
                         // KB 模式（单次令牌版）：我们替页面下载这份分片，存档后回喂给页面
@@ -132,6 +136,7 @@ public class SnifferActivity extends Activity {
                             }
                             c.disconnect();
                         } catch (Throwable ignored) {}
+                        }   // end else(同档存档)
                     }
                     if (MEDIA.matcher(url).find()) {
                         final String fUrl = url;
@@ -262,6 +267,28 @@ public class SnifferActivity extends Activity {
                 kblogW.flush();
             }
         } catch (Exception ignored) {}
+    }
+
+    /** 判断分片 URL 与 mediaUrl 是否同一画质档位（取 /v3/<id>/<NN>/data 中的 NN 段对比） */
+    private static boolean sameQuality(String segUrl, String mediaUrl) {
+        try {
+            if (mediaUrl == null) return true;
+            String mSeg = qualitySeg(mediaUrl), sSeg = qualitySeg(segUrl);
+            if (mSeg == null || sSeg == null) return true;
+            return mSeg.equals(sSeg);
+        } catch (Throwable t) { return true; }
+    }
+
+    private static String qualitySeg(String url) {
+        try {
+            int i = url.indexOf("/data/");
+            if (i < 0) return null;
+            int j = url.lastIndexOf('/', i - 1);
+            if (j < 0) return null;
+            int k = url.lastIndexOf('/', j - 1);
+            if (k < 0) return null;
+            return url.substring(k + 1, j);   // NN 档位段
+        } catch (Throwable t) { return null; }
     }
 
     public static void startKb(Context c) {
