@@ -71,7 +71,7 @@ public class SnifferActivity extends Activity {
 
             @Override
             public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
-                super.doUpdateVisitedHistory(url, isReload);
+                super.doUpdateVisitedHistory(view, url, isReload);
                 if (url != null && !url.startsWith("data:")) {
                     ((EditText) findViewById(R.id.etSniffUrl)).setText(url);
                 }
