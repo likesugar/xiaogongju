@@ -100,6 +100,7 @@ public class ToolboxActivity extends Activity {
             }
         });
 
+
         tvNext = findViewById(R.id.tvNextDose);
 
 

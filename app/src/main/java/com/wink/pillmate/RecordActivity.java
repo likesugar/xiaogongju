@@ -36,13 +36,39 @@ public class RecordActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(24, 40, 24, 24);
 
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setPadding(0, 0, 0, 20);
         TextView title = new TextView(this);
         title.setText("下载");
         title.setTextSize(22);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextColor(Color.WHITE);
-        title.setPadding(0, 0, 0, 20);
-        col.addView(title);
+        LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(0, -2);
+        hlp.weight = 1;
+        title.setLayoutParams(hlp);
+        head.addView(title);
+        TextView recNow = new TextView(this);
+        recNow.setText("⏺ 录制当前流");
+        recNow.setTextColor(Color.WHITE);
+        recNow.setTextSize(14);
+        recNow.setPadding(20, 12, 20, 12);
+        recNow.setBackgroundColor(0xFF24485E);
+        recNow.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                String u = PlayerActivity.lastStreamUrl;
+                if (u == null || u.isEmpty() || !u.startsWith("http")) {
+                    Toast.makeText(RecordActivity.this, "先在播放器里开播一条直播流", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                PlayerActivity.startRecJob(u);
+                rebuild();
+                Toast.makeText(RecordActivity.this, "已开始录制", Toast.LENGTH_SHORT).show();
+            }
+        });
+        head.addView(recNow);
+        col.addView(head);
 
         tvEmpty = new TextView(this);
         tvEmpty.setText("暂无录制任务");
@@ -164,13 +190,46 @@ public class RecordActivity extends Activity {
                 public boolean onMenuItemClick(android.view.MenuItem it) { PlayerActivity.recContinue(j.id); rebuild(); return true; }
             });
         }
-        pm.getMenu().add("播放").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
+        pm.getMenu().add("在VLC播放").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
             public boolean onMenuItemClick(android.view.MenuItem it) { play(j); return true; }
+        });
+        pm.getMenu().add("复制下载地址").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
+            public boolean onMenuItemClick(android.view.MenuItem it) {
+                try {
+                    android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("url", j.url != null ? j.url : ""));
+                    Toast.makeText(RecordActivity.this, "已复制", Toast.LENGTH_SHORT).show();
+                } catch (Throwable t) { Toast.makeText(RecordActivity.this, "复制失败", Toast.LENGTH_SHORT).show(); }
+                return true;
+            }
+        });
+        pm.getMenu().add("打开所在目录").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
+            public boolean onMenuItemClick(android.view.MenuItem it) { openDir(); return true; }
         });
         pm.getMenu().add("取消").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
             public boolean onMenuItemClick(android.view.MenuItem it) { PlayerActivity.recCancel(j.id); rebuild(); return true; }
         });
         pm.show();
+    }
+
+    private void openDir() {
+        try {
+            java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setDataAndType(android.net.Uri.parse(
+                "content://com.android.externalstorage.documents/document/primary:Android/data/com.wink.pillmate/files/录制"),
+                "resource/folder");
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(i);
+        } catch (Throwable t) {
+            try {
+                Intent i2 = new Intent(Intent.ACTION_VIEW);
+                i2.setDataAndType(android.net.Uri.parse("file://" + getExternalFilesDir(null) + "/录制"), "resource/folder");
+                startActivity(i2);
+            } catch (Throwable t2) {
+                Toast.makeText(this, "没有可用的文件管理器", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 
     private void play(PlayerActivity.RecJob j) {

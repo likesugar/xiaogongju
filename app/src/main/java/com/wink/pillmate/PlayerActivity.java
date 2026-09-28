@@ -194,6 +194,12 @@ public class PlayerActivity extends Activity {
             if (autoUrl != null && !autoUrl.isEmpty()) {
                 setPlayState("直播代理模式: " + autoUrl);
                 play(Uri.parse(autoUrl));
+            } else {
+                String last = getSharedPreferences("settings", MODE_PRIVATE).getString("lastUrl", null);
+                if (last != null && !last.isEmpty()) {
+                    setPlayState("恢复上次直播: " + last);
+                    play(Uri.parse(last));
+                }
             }
         } catch (Throwable t) {
             showError("初始化失败", t);
@@ -360,7 +366,7 @@ public class PlayerActivity extends Activity {
         });
 
         findViewById(R.id.btnDl).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { toggleRec(); }
+            public void onClick(View v) { startActivity(new Intent(PlayerActivity.this, RecordActivity.class)); }
         });
 
         // 点视频区 显示/隐藏 内置控制条（DK：显示后 4 秒自动淡出）
@@ -569,6 +575,7 @@ public class PlayerActivity extends Activity {
     private static volatile int recSeq = 0;
     private static android.os.PowerManager.WakeLock recWake = null;
     private static Context sCtx;
+    public static volatile String lastStreamUrl = null;
 
     private static void acquireWake() {
         try {
@@ -595,13 +602,13 @@ public class PlayerActivity extends Activity {
         startRecJob(u);
     }
 
-    private void startRecJob(final String url) {
+    static void startRecJob(final String url) {
         RecJob job = new RecJob();
         job.id = ++recSeq;
         job.notifId = 9000 + job.id;
         job.url = url;
         try {
-            java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
+            java.io.File dir = new java.io.File(sCtx.getExternalFilesDir(null), "录制");
             if (!dir.exists()) dir.mkdirs();
             String lu = url.toLowerCase();
             String ext = lu.contains(".flv") ? "flv" : "mp4";
@@ -738,6 +745,8 @@ public class PlayerActivity extends Activity {
     private void play(Uri uri) {
         // 直连播放
         currentMediaUrl = uri.toString();
+        lastStreamUrl = uri.toString();
+        getSharedPreferences("settings", MODE_PRIVATE).edit().putString("lastUrl", uri.toString()).apply();
         currentUrl = uri.toString();
         setPlayState("开始播放: " + uri);
         try {
