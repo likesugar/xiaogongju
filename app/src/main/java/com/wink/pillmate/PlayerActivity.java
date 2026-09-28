@@ -675,16 +675,15 @@ public class PlayerActivity extends Activity {
     };
 
     /**
-     * 播放/换流：等价"退出重进"
+     * 播放/换流：彻底"退出重进"
      * 1. 停止并彻底释放旧的 MediaPlayer + LibVLC
-     * 2. 延时 400ms 让 VLC 底层线程 / MediaCodec / Surface 完全退出
-     * 3. 重新 new LibVLC + MediaPlayer
-     * 4. attachViews → setMedia → play
+     * 2. 延时 500ms 让 VLC 底层完全退出
+     * 3. 重建实例 + attachViews（给 Surface 300ms 挂载时间）
+     * 4. 再 setMedia + play
      */
     private void play(Uri uri) {
         final String newUrl = uri.toString();
 
-        // 同一地址且正在播放则忽略
         if (newUrl.equals(currentMediaUrl) && player != null && player.isPlaying()) {
             return;
         }
@@ -703,7 +702,7 @@ public class PlayerActivity extends Activity {
         runOnUiThread(new Runnable() {
             public void run() {
                 try {
-                    // ★ 1. 彻底停止并释放旧的播放器和 LibVLC（等价"退出重进"）
+                    // 1. 彻底释放旧实例
                     if (player != null) {
                         try { player.stop(); } catch (Throwable ignored) {}
                         try { if (player.getVLCVout().areViewsAttached()) player.detachViews(); } catch (Throwable ignored) {}
@@ -715,47 +714,56 @@ public class PlayerActivity extends Activity {
                         libVLC = null;
                     }
 
-                    // ★ 2. 延时让 VLC 底层线程 / MediaCodec / Surface 完全退干净
+                    // 2. 等底层完全退出
                     handler.postDelayed(new Runnable() {
                         public void run() {
                             try {
-                                // ★ 3. 重建实例
+                                // 3. 重建实例并挂 Surface
                                 ensurePlayer();
-
-                                Media m;
-                                String scheme = uri.getScheme();
-                                if ("content".equals(scheme) || "file".equals(scheme)) {
-                                    if (pfd != null) { try { pfd.close(); } catch (Exception ignored) {} }
-                                    pfd = getContentResolver().openFileDescriptor(uri, "r");
-                                    if (pfd == null) throw new Exception("无法打开文件描述符");
-                                    m = new Media(libVLC, pfd.getFileDescriptor());
-                                } else {
-                                    m = new Media(libVLC, uri);
-                                    // 硬解 + 关 DR（direct rendering）以避免 Surface 冲突
-                                    m.setHWDecoderEnabled(true, true);
-                                    m.addOption(":no-mediacodec-dr");
-                                    m.addOption(":no-omxil-dr");
-                                }
-
-                                // ★ 4. 新实例首次 attach
                                 try {
                                     player.attachViews(videoLayout, null, true, false);
                                     player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
                                 } catch (Throwable ignored) {}
 
-                                player.setMedia(m);
-                                m.release();
-                                setPlayState("已装载媒体，启动播放…");
-                                player.play();
-                                showController();
+                                // 4. 给 Surface 300ms 稳定时间，再 setMedia + play
+                                handler.postDelayed(new Runnable() {
+                                    public void run() {
+                                        try {
+                                            Media m;
+                                            String scheme = uri.getScheme();
+                                            if ("content".equals(scheme) || "file".equals(scheme)) {
+                                                if (pfd != null) { try { pfd.close(); } catch (Exception ignored) {} }
+                                                pfd = getContentResolver().openFileDescriptor(uri, "r");
+                                                if (pfd == null) throw new Exception("无法打开文件描述符");
+                                                m = new Media(libVLC, pfd.getFileDescriptor());
+                                            } else {
+                                                m = new Media(libVLC, uri);
+                                                m.setHWDecoderEnabled(true, true);
+                                                m.addOption(":no-mediacodec-dr");
+                                                m.addOption(":no-omxil-dr");
+                                            }
+
+                                            player.setMedia(m);
+                                            m.release();
+                                            setPlayState("已装载媒体，启动播放…");
+                                            player.play();
+                                            showController();
+                                        } catch (Throwable t) {
+                                            hideLoading();
+                                            showError("播放失败", t);
+                                        } finally {
+                                            switchingMedia = false;
+                                        }
+                                    }
+                                }, 300);
+
                             } catch (Throwable t) {
+                                switchingMedia = false;
                                 hideLoading();
                                 showError("播放失败", t);
-                            } finally {
-                                switchingMedia = false;
                             }
                         }
-                    }, 400);
+                    }, 500);
 
                 } catch (Throwable t) {
                     switchingMedia = false;
@@ -773,7 +781,6 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        // 默认退到后台就暂停；开了后台播放模式则继续出声
         if (!backgroundMode && recJobs.isEmpty() && player != null) {
             try { player.pause(); } catch (Throwable ignored) {}
         }
@@ -782,7 +789,6 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        // 从别的页面回来：确保 Surface 挂着并继续播
         try {
             if (player != null && currentMediaUrl != null && !"-".equals(currentMediaUrl)) {
                 if (!player.getVLCVout().areViewsAttached()) {
@@ -816,7 +822,7 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        parseSink = null;   // 录制任务继续在后台跑，通知栏可停
+        parseSink = null;
         super.onDestroy();
         handler.removeCallbacks(tick);
         handler.removeCallbacks(fadeOut);
