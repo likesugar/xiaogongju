@@ -99,9 +99,21 @@ public class DouyinActivity extends Activity {
                 if (hit && foundUrls.add(url)) {
                     // 画质拉满：ratio=540p/720p/default → 1080p（改写后与原链接都保留）
                     String hi = url.replaceAll("ratio=[a-zA-Z0-9_]+", "ratio=1080p");
-                    final String f = hi.equals(url) ? url : hi;
-                    foundUrls.add(f);
-                    main.post(new Runnable() { public void run() { addRecord(f); } });
+                    if (hi.equals(url)) {
+                        final String f = url;
+                        main.post(new Runnable() { public void run() { addRecord(f); } });
+                    } else {
+                        final String f = hi;
+                        foundUrls.add(f);
+                        main.post(new Runnable() { public void run() { addRecord(f); } });
+                    }
+                    // HLS 主清单：后台解析 BANDWIDTH 最高的变体流
+                    if (l.contains(".m3u8")) {
+                        final String mu = url;
+                        new Thread(new Runnable() {
+                            public void run() { pickBestVariant(mu); }
+                        }).start();
+                    }
                 }
                 return null;
             }
@@ -185,6 +197,40 @@ public class DouyinActivity extends Activity {
     private void reloadCurrent() {
         String cur = webView.getUrl();
         if (cur != null && !cur.startsWith("data:")) webView.loadUrl(cur);
+    }
+
+    /** HLS 主清单择优：抓 BANDWIDTH 最大的变体流进记录 */
+    private void pickBestVariant(String masterUrl) {
+        try {
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(masterUrl).openConnection();
+            c.setConnectTimeout(8000); c.setReadTimeout(8000);
+            c.setRequestProperty("User-Agent", webView.getSettings().getUserAgentString());
+            c.setRequestProperty("Referer", "https://live.douyin.com/");
+            if (c.getResponseCode() != 200) return;
+            java.io.InputStream in = c.getInputStream();
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[8192]; int n;
+            while ((n = in.read(b)) > 0) bo.write(b, 0, n);
+            in.close(); c.disconnect();
+            String body = bo.toString("UTF-8");
+            if (!body.contains("#EXT-X-STREAM-INF")) return;   // 已是媒体清单
+            long bestBw = -1; String best = null; long curBw = -1;
+            java.net.URI base = java.net.URI.create(masterUrl);
+            for (String ln : body.split("\n")) {
+                String t = ln.trim();
+                if (t.startsWith("#EXT-X-STREAM-INF")) {
+                    Matcher bm = Pattern.compile("BANDWIDTH=(\\d+)").matcher(t);
+                    curBw = bm.find() ? Long.parseLong(bm.group(1)) : -1;
+                } else if (!t.isEmpty() && !t.startsWith("#") && curBw > bestBw) {
+                    bestBw = curBw;
+                    best = base.resolve(t).toString();
+                }
+            }
+            if (best != null && foundUrls.add(best)) {
+                final String f = best;
+                main.post(new Runnable() { public void run() { addRecord(f); } });
+            }
+        } catch (Throwable ignored) {}
     }
 
     private void addRecord(final String rawUrl) {
