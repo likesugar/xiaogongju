@@ -532,6 +532,7 @@ public class PlayerActivity extends Activity {
     private static volatile Thread recThread = null;
     private static volatile boolean recActive = false;
     private static volatile String recName = null;
+    private static android.os.PowerManager.WakeLock recWake = null;
 
     private void toggleRec() {
         if (recActive) { stopRec(); return; }
@@ -556,6 +557,12 @@ public class PlayerActivity extends Activity {
                         .format(new java.util.Date()) + "." + ext);
                     recName = out.getName();
                     showRecNote(true, recName);
+                    try {
+                        android.os.PowerManager pm = (android.os.PowerManager) getSystemService(android.content.Context.POWER_SERVICE);
+                        recWake = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "pillmate:rec");
+                        recWake.acquire(4 * 3600 * 1000L);
+                    } catch (Throwable ignored) {}
+                    android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_LESS_FAVORABLE);
                     java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
                     recConn = c;
                     c.setConnectTimeout(10000);
@@ -591,6 +598,26 @@ public class PlayerActivity extends Activity {
                 } finally {
                     recActive = false; recConn = null; recThread = null;
                     showRecNote(false, null);
+                    try { if (recWake != null) { recWake.release(); recWake = null; } } catch (Throwable ignored) {}
+                    // 转封装 flv→mp4（-c copy 秒级完成），获得可拖动快进的文件
+                    if (out != null && out.length() > 0 && out.getName().endsWith(".flv")) {
+                        try {
+                            String mp4 = out.getAbsolutePath().replace(".flv", ".mp4");
+                            com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(
+                                new String[]{"-y", "-i", out.getAbsolutePath(), "-c", "copy",
+                                    "-movflags", "+faststart", mp4});
+                            if (st.getState().equals(com.arthenica.ffmpegkit.SessionState.COMPLETED)
+                                && new java.io.File(mp4).length() > 0) {
+                                out.delete();
+                                final String msg = mp4.substring(mp4.lastIndexOf('/') + 1);
+                                runOnUiThread(new Runnable() {
+                                    public void run() {
+                                        Toast.makeText(PlayerActivity.this, "已转存 mp4: " + msg, Toast.LENGTH_LONG).show();
+                                    }
+                                });
+                            }
+                        } catch (Throwable ignored) {}
+                    }
                 }
             }
         });
@@ -676,7 +703,7 @@ public class PlayerActivity extends Activity {
     protected void onStop() {
         super.onStop();
         // 默认退到后台就暂停；开了后台播放模式则继续出声
-        if (!backgroundMode && player != null) {
+        if (!backgroundMode && !recActive && player != null) {
             try { player.pause(); } catch (Throwable ignored) {}
         }
     }
