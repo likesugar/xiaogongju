@@ -208,6 +208,22 @@ public class PlayerActivity extends Activity {
         }
     }
 
+    /** 二次解析修复：已有播放器实例时复用，原地换流（不叠新实例） */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        try {
+            String autoUrl = intent.getStringExtra("autoUrl");
+            if (autoUrl != null && !autoUrl.isEmpty()) {
+                setPlayState("直播代理模式: " + autoUrl);
+                play(Uri.parse(autoUrl));
+            }
+        } catch (Throwable t) {
+            showError("换流失败", t);
+        }
+    }
+
     private void applyImmersive() {
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             getWindow().setDecorFitsSystemWindows(false);
