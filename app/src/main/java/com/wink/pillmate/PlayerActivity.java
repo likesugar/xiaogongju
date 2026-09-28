@@ -365,20 +365,7 @@ public class PlayerActivity extends Activity {
                         android.widget.Toast.makeText(PlayerActivity.this, "还没有可下载的流", android.widget.Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    // 直播 flv → ffmpeg 直播录制到 files/录制
-                    String lu = u.toLowerCase();
-                    if (lu.contains(".flv") || lu.contains("douyincdn")) {
-                        toggleLiveRecord(u);
-                        return;
-                    }
-                    String fname = "pillmate_视频_" + System.currentTimeMillis() / 1000 + ".mp4";
-                    android.app.DownloadManager.Request req = new android.app.DownloadManager.Request(Uri.parse(u));
-                    req.setTitle(fname);
-                    req.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_MOVIES, fname);
-                    req.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                    android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                    dm.enqueue(req);
-                    android.widget.Toast.makeText(PlayerActivity.this, "已开始下载到 Movies", android.widget.Toast.LENGTH_SHORT).show();
+                    toggleLiveRecord(u);
                 } catch (Throwable t) {
                     android.widget.Toast.makeText(PlayerActivity.this, "下载失败: " + t.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
                 }
@@ -589,10 +576,12 @@ public class PlayerActivity extends Activity {
         try {
             java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
             if (!dir.exists()) dir.mkdirs();
+            String ext = url.toLowerCase().contains(".flv") ? "flv" : "mp4";
             String name = "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US)
-                .format(new java.util.Date()) + ".flv";
+                .format(new java.util.Date()) + "." + ext;
             java.io.File out = new java.io.File(dir, name);
-            String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
+            String ref = url.toLowerCase().contains("bilibili") ? "https://www.bilibili.com/" : "https://live.douyin.com/";
+            String headers = "Referer: " + ref + "\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
             String[] cmd = {"-hide_banner", "-loglevel", "error",
                 "-headers", headers,
                 "-i", url,
@@ -697,16 +686,9 @@ public class PlayerActivity extends Activity {
                 m = new Media(libVLC, pfd.getFileDescriptor());
             } else {
                 m = new Media(libVLC, uri);
-                boolean local = uri.getHost() != null && uri.getHost().contains("127.0.0.1");
-                if (local) {
-                    // 本地桥接 TS(h265)：纯软解，硬解直渲染黑屏
-                    m.setHWDecoderEnabled(false, false);
-                    m.addOption(":avcodec-hw=none");
-                } else {
-                    m.setHWDecoderEnabled(true, true);
-                    m.addOption(":no-mediacodec-dr");
-                    m.addOption(":no-omxil-dr");
-                }
+                m.setHWDecoderEnabled(true, true);
+                m.addOption(":no-mediacodec-dr");
+                m.addOption(":no-omxil-dr");
             }
             player.setMedia(m);
             m.release();
