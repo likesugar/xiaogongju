@@ -98,17 +98,25 @@ public class ToolboxActivity extends Activity {
         tvNext = findViewById(R.id.tvNextDose);
 
 
+        final android.content.Context appCtx = getApplicationContext();
         // 全局崩溃日志 → Movies/录制/crash.txt（公共目录可直接查看）
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
             public void uncaughtException(Thread t, Throwable e) {
                 try {
-                    java.io.File dir = new java.io.File(
-                        android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MOVIES), "录制");
-                    if (!dir.exists()) dir.mkdirs();
-                    java.io.PrintWriter pw = new java.io.PrintWriter(new java.io.FileWriter(new java.io.File(dir, "crash.txt"), true));
-                    pw.println("==== " + new java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(new java.util.Date()) + " ====\n");
-                    e.printStackTrace(pw);
-                    pw.close();
+                    // 沙箱限制：公共目录必须走 MediaStore，File 直写会静默失败
+                    java.io.StringWriter sw = new java.io.StringWriter();
+                    e.printStackTrace(new java.io.PrintWriter(sw));
+                    android.content.ContentValues cv = new android.content.ContentValues();
+                    cv.put(android.provider.MediaStore.Downloads.DISPLAY_NAME,
+                        "crash_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US).format(new java.util.Date()) + ".txt");
+                    cv.put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain");
+                    cv.put(android.provider.MediaStore.Downloads.RELATIVE_PATH, "Download/录制");
+                    android.net.Uri uri = appCtx.getContentResolver().insert(
+                        android.provider.MediaStore.Downloads.getContentUri("external_primary"), cv);
+                    java.io.OutputStream os = appCtx.getContentResolver().openOutputStream(uri);
+                    os.write(("==== " + new java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(new java.util.Date()) + " ====\n").getBytes());
+                    os.write(sw.toString().getBytes());
+                    os.close();
                 } catch (Throwable ignored) {}
             }
         });
