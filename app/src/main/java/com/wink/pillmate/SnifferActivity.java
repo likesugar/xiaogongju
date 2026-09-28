@@ -44,6 +44,11 @@ public class SnifferActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_sniffer);
 
+        // Android 13+ 通知运行时权限（后台录制通知必需）
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7);
+        }
         webView = findViewById(R.id.sniffWebView);
         final EditText etUrl = findViewById(R.id.etSniffUrl);
 

@@ -12,19 +12,54 @@ import android.widget.Toast;
 import java.util.Calendar;
 import java.util.List;
 
-/** 首页：工具箱 */
+/** 首页：工具箱（纯黑/冰蓝主题切换 · 全屏） */
 public class ToolboxActivity extends Activity {
 
     private TextView tvNext;
-    private TextView tvNoiseState;
 
+    // ---------- 主题（纯黑 / 冰蓝） ----------
+    private void applyTheme() {
+        boolean dark = getSharedPreferences("settings", MODE_PRIVATE).getBoolean("dark", false);
+        findViewById(R.id.toolRoot).setBackgroundColor(dark ? 0xFF000000 : 0xFFEEF4FF);
+        findViewById(R.id.toolColumn).setBackgroundColor(dark ? 0xFF000000 : 0xFFEEF4FF);
+        ((TextView) findViewById(R.id.themeToggle)).setText(dark ? "☀️" : "🌙");
+        applyTraversal((android.view.ViewGroup) findViewById(R.id.toolColumn), dark);
+    }
+
+    private void applyTraversal(android.view.ViewGroup vg, boolean dark) {
+        for (int i = 0; i < vg.getChildCount(); i++) {
+            View c = vg.getChildAt(i);
+            String t = c.getTag() == null ? "" : c.getTag().toString();
+            if (c instanceof TextView) {
+                if (t.equals("title")) ((TextView) c).setTextColor(dark ? 0xFFFFFFFF : 0xFF1F2329);
+                else if (t.equals("sub")) ((TextView) c).setTextColor(dark ? 0xFF9AA3AE : 0xFF8A94A6);
+                else if (t.equals("chip")) {
+                    ((TextView) c).setBackgroundResource(dark ? R.drawable.bg_chip_dark : R.drawable.bg_chip_off);
+                    ((TextView) c).setTextColor(dark ? 0xFF9AA3AE : 0xFF8A94A6);
+                }
+            }
+            if (t.equals("card")) c.setBackgroundResource(dark ? R.drawable.bg_card_dark : R.drawable.bg_card);
+            if (c instanceof android.view.ViewGroup) applyTraversal((android.view.ViewGroup) c, dark);
+        }
+    }
+
+    // ---------- 沉浸全屏 ----------
     private void applyImmersive() {
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             getWindow().setDecorFitsSystemWindows(false);
             android.view.WindowInsetsController c = getWindow().getInsetsController();
             if (c != null) {
+                c.hide(android.view.WindowInsets.Type.systemBars());
                 c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         }
     }
 
@@ -38,10 +73,16 @@ public class ToolboxActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_toolbox);
+        applyTheme();
         applyImmersive();
 
-        tvNext = findViewById(R.id.tvNextDose);
-        tvNoiseState = findViewById(R.id.tvNoiseState); // 已挪入白噪音卡片
+        findViewById(R.id.themeToggle).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                boolean dark = getSharedPreferences("settings", MODE_PRIVATE).getBoolean("dark", false);
+                getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("dark", !dark).apply();
+                applyTheme();
+            }
+        });
 
         findViewById(R.id.cardMeds).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
@@ -53,8 +94,13 @@ public class ToolboxActivity extends Activity {
                 startActivity(new Intent(ToolboxActivity.this, PlayerActivity.class));
             }
         });
+        findViewById(R.id.cardParse).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                startActivity(new Intent(ToolboxActivity.this, ParseActivity.class));
+            }
+        });
 
-        bindNoise();
+        tvNext = findViewById(R.id.tvNextDose);
 
         if (Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != 0) {
@@ -67,7 +113,6 @@ public class ToolboxActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshNext();
-        updateNoiseState();
     }
 
     private void refreshNext() {
@@ -95,41 +140,6 @@ public class ToolboxActivity extends Activity {
             tvNext.setText("✅ 今日计划已完成 " + done + "/" + total);
         } else {
             tvNext.setText("🌱 还没有计划，点进去添加");
-        }
-    }
-
-    // ---------- ASMR ----------
-    private void bindNoise() {
-        int[] ids = {R.id.noiseRain, R.id.noiseWave, R.id.noiseFire, R.id.noiseWind};
-        final int[] kinds = {NoisePlayer.RAIN, NoisePlayer.WAVE, NoisePlayer.FIRE, NoisePlayer.WIND};
-        for (int i = 0; i < ids.length; i++) {
-            final int kind = kinds[i];
-            findViewById(ids[i]).setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                    NoisePlayer np = NoisePlayer.get();
-                    if (np.isPlaying() && np.getKind() == kind) np.stop();
-                    else np.play(kind);
-                    updateNoiseState();
-                }
-            });
-        }
-        findViewById(R.id.btnStopNoise).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                NoisePlayer.get().stop();
-                updateNoiseState();
-            }
-        });
-    }
-
-    private void updateNoiseState() {
-        NoisePlayer np = NoisePlayer.get();
-        String[] names = {"🌧️ 雨声播放中", "🌊 海浪播放中", "🔥 篝火播放中", "🍃 风声播放中"};
-        if (np.isPlaying()) {
-            tvNoiseState.setText(names[np.getKind()]);
-            tvNoiseState.setTextColor(0xFF1677FF);
-        } else {
-            tvNoiseState.setText("未播放");
-            tvNoiseState.setTextColor(0xFF8A94A6);
         }
     }
 

@@ -6,6 +6,7 @@
     android:background="#000000">
 
     <LinearLayout android:id="@+id/headerBar"
+        android:visibility="gone"
         android:layout_width="match_parent" android:layout_height="56dp"
         android:background="@color/blue2"
         android:gravity="center_vertical"
@@ -102,18 +103,24 @@
     <LinearLayout android:id="@+id/bottomBar"
         android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="#66000000" android:padding="8dp">
+        android:background="#F2FFFFFF" android:padding="8dp">
 
         <TextView android:id="@+id/btnPick"
             android:layout_width="0dp" android:layout_weight="1"
             android:layout_height="40dp" android:gravity="center"
-            android:text="📂 本地文件" android:textColor="#000000" android:textSize="14sp"/>
+            android:text="📂 本地文件" android:textColor="#1F2329" android:textSize="15sp" android:textStyle="bold"/>
 
         <TextView android:id="@+id/btnSniff"
             android:layout_width="0dp" android:layout_weight="1"
             android:layout_height="40dp" android:gravity="center"
             android:layout_marginLeft="10dp"
-            android:text="🔍 网页解析" android:textColor="#000000" android:textSize="14sp"/>
+            android:text="🔍 网页解析" android:textColor="#1F2329" android:textSize="15sp" android:textStyle="bold"/>
+
+        <TextView android:id="@+id/btnDl"
+            android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="40dp" android:gravity="center"
+            android:layout_marginLeft="10dp"
+            android:text="⬇ 下载" android:textColor="#1F2329" android:textSize="15sp" android:textStyle="bold"/>
     </LinearLayout>
 
     <TextView android:id="@+id/tvPlayState"

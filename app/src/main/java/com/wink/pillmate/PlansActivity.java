@@ -19,14 +19,20 @@ import java.util.Locale;
 /** 用药计划页：列表 + 新增 */
 public class PlansActivity extends Activity {
 
+    private boolean dark;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_plans);
 
-        findViewById(R.id.btnBack).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { finish(); }
-        });
+        dark = getSharedPreferences("settings", MODE_PRIVATE).getBoolean("dark", false);
+        if (dark) {
+            android.view.ViewGroup content = (android.view.ViewGroup) findViewById(android.R.id.content);
+            content.getChildAt(0).setBackgroundColor(0xFF000000);
+            ((TextView) findViewById(R.id.tvEmpty)).setTextColor(0xFF9AA3AE);
+        }
+
         findViewById(R.id.btnAdd).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 startActivity(new Intent(PlansActivity.this, AddActivity.class));
@@ -49,7 +55,7 @@ public class PlansActivity extends Activity {
         for (final MedStore.Plan p : plans) {
             LinearLayout card = new LinearLayout(this);
             card.setOrientation(LinearLayout.VERTICAL);
-            card.setBackgroundResource(R.drawable.bg_card);
+            card.setBackgroundResource(dark ? R.drawable.bg_card_dark : R.drawable.bg_card);
             int pad = (int) dp(16);
             card.setPadding(pad, pad, pad, pad);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -62,7 +68,7 @@ public class PlansActivity extends Activity {
             row.setGravity(Gravity.CENTER_VERTICAL);
             TextView name = new TextView(this);
             name.setText("💊 " + p.name);
-            name.setTextColor(0xFF1F2329);
+            name.setTextColor(dark ? 0xFFFFFFFF : 0xFF1F2329);
             name.setTextSize(17);
             name.setTypeface(null, Typeface.BOLD);
             name.setEllipsize(TextUtils.TruncateAt.END);
@@ -95,7 +101,7 @@ public class PlansActivity extends Activity {
             boolean doneToday = p.doneDate != null && p.doneDate.equals(todayStr());
             TextView meta = new TextView(this);
             meta.setText(sb + (doneToday ? " · 今日已完成 ✓" : ""));
-            meta.setTextColor(doneToday ? 0xFF0E9F6E : 0xFF8A94A6);
+            meta.setTextColor(doneToday ? 0xFF0E9F6E : (dark ? 0xFF9AA3AE : 0xFF8A94A6));
             meta.setTextSize(13);
             meta.setPadding(0, (int) dp(6), 0, 0);
             card.addView(meta);
@@ -111,7 +117,7 @@ public class PlansActivity extends Activity {
             done.setTextSize(14);
             done.setTypeface(null, Typeface.BOLD);
             done.setPadding((int) dp(16), (int) dp(6), (int) dp(16), (int) dp(6));
-            done.setBackgroundResource(R.drawable.bg_chip_off);
+            done.setBackgroundResource(dark ? R.drawable.bg_chip_dark : R.drawable.bg_chip_off);
             done.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
                     String nd = p.doneDate != null && p.doneDate.equals(todayStr()) ? "" : todayStr();

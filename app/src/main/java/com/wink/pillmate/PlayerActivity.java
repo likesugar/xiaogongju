@@ -199,6 +199,7 @@ public class PlayerActivity extends Activity {
             getWindow().setDecorFitsSystemWindows(false);
             android.view.WindowInsetsController c = getWindow().getInsetsController();
             if (c != null) {
+                c.hide(android.view.WindowInsets.Type.systemBars());
                 c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
         }
@@ -267,9 +268,74 @@ public class PlayerActivity extends Activity {
         } catch (Throwable ignored) {}
     }
 
+    private void hideSysBar() {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            getWindow().setDecorFitsSystemWindows(false);
+            android.view.WindowInsetsController c = getWindow().getInsetsController();
+            if (c != null) {
+                c.hide(android.view.WindowInsets.Type.systemBars());
+                c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(
+                android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                | android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        }
+    }
+
+    /** 全屏：不动视频容器（Surface 重挂会黑屏），只隐藏底部栏 + 横屏 + 沉浸 */
+    private void startFullScreen() {
+        if (fullscreen) return;
+        fullscreen = true;
+        View bb = findViewById(R.id.bottomBar);
+        if (bb != null) bb.setVisibility(View.GONE);
+        View ps = findViewById(R.id.tvPlayState);
+        if (ps != null) ps.setVisibility(View.GONE);
+        hideSysBar();
+        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+    }
+
+    private void stopFullScreen() {
+        if (!fullscreen) return;
+        fullscreen = false;
+        View bb = findViewById(R.id.bottomBar);
+        if (bb != null) bb.setVisibility(View.VISIBLE);
+        View ps = findViewById(R.id.tvPlayState);
+        if (ps != null) ps.setVisibility(View.VISIBLE);
+        applyImmersive();
+        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+    }
+
     private void bind() {
         findViewById(R.id.btnBack).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { finish(); }
+        });
+
+        // 下载当前流（B站经本地代理带 Referer，直接可下）
+        findViewById(R.id.btnDl).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                try {
+                    String u = currentMediaUrl;
+                    if (u == null || u.isEmpty() || "-".equals(u) || !u.startsWith("http")) {
+                        android.widget.Toast.makeText(PlayerActivity.this, "还没有可下载的流", android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    String fname = "pillmate_视频_" + System.currentTimeMillis() / 1000 + ".mp4";
+                    android.app.DownloadManager.Request req = new android.app.DownloadManager.Request(Uri.parse(u));
+                    req.setTitle(fname);
+                    req.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_MOVIES, fname);
+                    req.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                    dm.enqueue(req);
+                    android.widget.Toast.makeText(PlayerActivity.this, "已开始下载到 Movies", android.widget.Toast.LENGTH_SHORT).show();
+                } catch (Throwable t) {
+                    android.widget.Toast.makeText(PlayerActivity.this, "下载失败: " + t.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
+                }
+            }
         });
 
         // 点视频区 显示/隐藏 内置控制条（DK：显示后 4 秒自动淡出）
@@ -326,17 +392,15 @@ public class PlayerActivity extends Activity {
         });
 
         // 全屏：DK 横屏（跟随传感器正反向）；退出回竖屏；顶栏/底栏隐藏
+        // DK 式全屏：播放器容器挂到 DecorView（真正只有视频），横屏
         findViewById(R.id.btnFull).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                fullscreen = !fullscreen;
-                                                setRequestedOrientation(fullscreen
-                        ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                        : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-                showController();
+                try {
+                    if (!fullscreen) startFullScreen(); else stopFullScreen();
+                } catch (Throwable t) { showError("全屏失败", t); }
             }
         });
 
-        // ⏺ 单键同步：播放中即录制；停止=保存
         findViewById(R.id.btnSniff).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 try { startActivityForResult(new Intent(PlayerActivity.this, SnifferActivity.class), 2); }

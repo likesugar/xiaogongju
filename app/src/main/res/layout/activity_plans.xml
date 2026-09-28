@@ -4,22 +4,6 @@
     android:orientation="vertical"
     android:background="@color/bg">
 
-    <LinearLayout
-        android:layout_width="match_parent" android:layout_height="56dp"
-        android:background="@color/blue2"
-        android:gravity="center_vertical"
-        android:paddingLeft="8dp" android:paddingRight="16dp">
-        <TextView android:id="@+id/btnBack"
-            android:layout_width="40dp" android:layout_height="match_parent"
-            android:text="‹" android:textColor="#FFFFFF"
-            android:textSize="26sp" android:gravity="center"/>
-        <TextView
-            android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="用药计划" android:textColor="#FFFFFF"
-            android:textSize="18sp" android:textStyle="bold"/>
-    </LinearLayout>
-
     <ScrollView
         android:layout_width="match_parent" android:layout_height="0dp"
         android:layout_weight="1"

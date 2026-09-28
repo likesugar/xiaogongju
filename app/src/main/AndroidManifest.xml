@@ -17,6 +17,7 @@
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="true"
         android:allowBackup="true">
 
         <activity android:name=".ToolboxActivity"
@@ -38,6 +39,8 @@
         <service android:name=".RecordService" android:exported="false"
             android:foregroundServiceType="mediaProjection"/>
         <activity android:name=".SnifferActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"/>
+        <activity android:name=".ParseActivity" android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"/>
 
         <receiver android:name=".ReminderReceiver" android:exported="false"/>

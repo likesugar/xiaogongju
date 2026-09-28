@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="#000000">
+
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="50dp"
+        android:background="#1F2329"
+        android:gravity="center_vertical"
+        android:paddingLeft="8dp" android:paddingRight="10dp">
+        <TextView android:id="@+id/btnParseBack"
+            android:layout_width="40dp" android:layout_height="match_parent"
+            android:text="‹" android:textColor="#FFFFFF"
+            android:textSize="26sp" android:gravity="center"/>
+        <EditText android:id="@+id/etParseUrl"
+            android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1"
+            android:layout_marginLeft="4dp"
+            android:background="@drawable/bg_input"
+            android:hint="粘贴抖音/B站直播链接或房间号"
+            android:paddingLeft="12dp" android:paddingRight="12dp"
+            android:textSize="13sp"
+            android:inputType="textUri" android:maxLines="1"/>
+        <TextView android:id="@+id/btnParseGo" style="@style/Chip"
+            android:layout_width="wrap_content"
+            android:text="解析"/>
+        <TextView android:id="@+id/btnParseUA" style="@style/Chip"
+            android:layout_width="wrap_content"
+            android:text="UA:手机"/>
+    </LinearLayout>
+
+    <WebView android:id="@+id/parseWebView"
+        android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1"/>
+
+    <LinearLayout android:id="@+id/parseList"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#0D1117"
+        android:paddingTop="4dp" android:paddingBottom="4dp"/>
+
+</LinearLayout>

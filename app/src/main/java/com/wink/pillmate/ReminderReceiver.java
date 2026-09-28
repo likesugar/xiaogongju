@@ -21,7 +21,7 @@ import java.util.Calendar;
 /** 到点提醒：按周期/日期过滤 + 轻柔通知 + 自动排下一天 */
 public class ReminderReceiver extends BroadcastReceiver {
 
-    private static final String CH = "pillmate_remind";
+    private static final String CH = "pillmate_remind2";
 
     @Override
     public void onReceive(Context c, Intent intent) {
@@ -67,7 +67,8 @@ public class ReminderReceiver extends BroadcastReceiver {
             } else {
                 ch.enableVibration(true);
                 ch.setVibrationPattern(new long[]{0, 300, 250, 300});
-                Uri sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+                // 下课铃（内置 raw 资源）
+                Uri sound = Uri.parse("android.resource://" + c.getPackageName() + "/raw/school_bell");
                 ch.setSound(sound, new AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
@@ -102,7 +103,7 @@ public class ReminderReceiver extends BroadcastReceiver {
         nm.notify(p.id * 10 + (idx % 10), b.build());
     }
 
-    /** 自带提示音：滴滴滴 ×3，不依赖系统铃声设置 */
+    /** 自带提示音：下课铃循环 ~12s，不依赖系统铃声设置 */
     private void playBeep(final Context c, final MedStore.Plan p) {
         new Thread(new Runnable() {
             public void run() {
@@ -111,18 +112,22 @@ public class ReminderReceiver extends BroadcastReceiver {
                     return;
                 }
                 if ("silent".equals(p.sound)) return;
-                // 走闹钟音量通道，响度不受通知静音影响
-                ToneGenerator tg = null;
+                android.media.MediaPlayer mp = null;
                 try {
-                    tg = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
-                    for (int i = 0; i < 6; i++) {
-                        tg.startTone(ToneGenerator.TONE_PROP_BEEP, 180);
-                        Thread.sleep(320);
-                    }
+                    mp = new android.media.MediaPlayer();
+                    mp.setAudioAttributes(new android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build());
+                    mp.setDataSource(c, Uri.parse("android.resource://" + c.getPackageName() + "/raw/school_bell"));
+                    mp.prepare();
+                    mp.setLooping(true);
+                    mp.start();
+                    Thread.sleep(12000);
+                    mp.stop();
                     vibrate(c, new long[]{0, 300, 250, 300, 250, 300});
                 } catch (Exception ignored) {
                 } finally {
-                    if (tg != null) tg.release();
+                    if (mp != null) try { mp.release(); } catch (Exception ignored2) {}
                 }
             }
         }).start();
