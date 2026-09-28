@@ -12,7 +12,7 @@ SDK=$ANDROID_HOME/platforms/android-34/android.jar
 PROJ=$GITHUB_WORKSPACE
 
 echo "[deps] download prebuilt libvlc/ffmpeg-kit..."
-curl -sL -o deps.zip "https://github.com/likesugar/xiaogongju/releases/download/deps-v1/deps-v1.zip"
+curl -sL -o deps.zip "https://github.com/likesugar/xiaogongju/releases/download/deps-v2/deps-v2.zip"
 unzip -q deps.zip -d deps
 
 rm -rf build_out && mkdir -p build_out/gen build_out/classes build_out/dex
@@ -33,10 +33,9 @@ echo "[3/6] ecj compile..."
 RJ=$(find build_out/gen -name R.java)
 curl -sL -o ecj.jar "https://repo1.maven.org/maven2/org/eclipse/jdt/ecj/3.33.0/ecj-3.33.0.jar"
 java -jar ecj.jar -source 1.8 -target 1.8 -encoding UTF-8 -proc:none -nowarn \
-    -cp "$SDK:deps/libvlc_out/classes.jar:deps/ffk_out/classes.jar" -d build_out/classes \
+    -cp "$SDK:deps/media3/annotation.jar:deps/media3/guava.jar:deps/media3/media3-common.jar:deps/media3/media3-database.jar:deps/media3/media3-datasource.jar:deps/media3/media3-decoder.jar:deps/media3/media3-exoplayer.jar:deps/media3/media3-exoplayer-hls.jar:deps/media3/media3-extractor.jar:deps/media3/media3-ui.jar:deps/ffk_classes.jar" -d build_out/classes \
     "$RJ" \
-    "$PROJ"/app/src/main/java/com/wink/pillmate/*.java \
-    "$PROJ"/app/src/main/java/org/videolan/*.java
+    "$PROJ"/app/src/main/java/com/wink/pillmate/*.java
 
 echo "[4/6] d8 dex (app + libvlc/ffk classes)..."
 find build_out/classes -name "*.class" > build_out/classlist.txt
@@ -50,7 +49,6 @@ for d in build_out/dex/*.dex; do
     (cd build_out/dex && zip -q ../app-unsigned.apk "$(basename $d)")
 done
 mkdir -p build_out/lib/arm64-v8a
-cp deps/libvlc_out/jni/arm64-v8a/*.so build_out/lib/arm64-v8a/
 cp deps/ffk_out/jni/arm64-v8a/*.so build_out/lib/arm64-v8a/
 (cd build_out && zip -q -r app-unsigned.apk lib)
 "$BT/zipalign" -f 4 build_out/app-unsigned.apk build_out/app-aligned.apk

@@ -6,55 +6,45 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.ExoPlayer;
+import android.view.SurfaceView;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
-import org.videolan.libvlc.LibVLC;
-import org.videolan.libvlc.Media;
-import org.videolan.libvlc.MediaPlayer;
-import org.videolan.libvlc.util.VLCVideoLayout;
+
+
+
 
 import java.io.File;
-import java.io.FileWriter;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
-import java.util.Locale;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
-/** VLC 播放器：官方 VLC-Android 播放路径 + DKVideoPlayer 风格控制条 */
+/** VLC 播放器：Media3(ExoPlayer) 播放内核 + DKVideoPlayer 风格控制条 */
 public class PlayerActivity extends Activity {
 
+    /** 抖哔面板解析出地址后回传开播 */
     public interface ParseSink { void onParsed(String url); }
     public static volatile ParseSink parseSink;
 
-    private static final String TAG = "PlayerActivity";
 
-    // ============ 日志文件 ============
-    private File logFile;
-    private void log(String msg) {
-        try {
-            if (logFile == null) {
-                logFile = new File(getExternalFilesDir(null), "player_log.txt");
-            }
-            FileWriter fw = new FileWriter(logFile, true);
-            fw.write(new SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(new Date())
-                + "  " + msg + "\n");
-            fw.close();
-        } catch (Throwable ignored) {}
-    }
-    // ==================================
-
-    private LibVLC libVLC;
-    private MediaPlayer player;
-    private VLCVideoLayout videoLayout;
+    private ExoPlayer player;
+    private SurfaceView videoSurface;
     private ParcelFileDescriptor pfd;
 
     private SeekBar seek;
@@ -83,7 +73,7 @@ public class PlayerActivity extends Activity {
 
     private String currentMediaUrl = "-";
     private String currentUrl = null;
-    private volatile boolean switchingMedia = false;
+    
 
     private void refreshSpeedMenu() {
         for (int i = 0; i < speedList.getChildCount(); i++) {
@@ -109,7 +99,7 @@ public class PlayerActivity extends Activity {
         public void run() {
             try {
                 if (player != null) {
-                    long pos = player.getTime(), len = player.getLength();
+                    long pos = player.getCurrentPosition(), len = player.getDuration();
                     tvTime.setText(fmt(pos));
                     tvTotal.setText(fmt(len));
                     int p = len > 0 ? (int) (pos * 1000 / len) : 0;
@@ -137,39 +127,25 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        log("=== onCreate start ===");
         final Thread.UncaughtExceptionHandler def = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
             public void uncaughtException(Thread t, Throwable e) {
                 try {
-                    FileWriter fw = new FileWriter(new File(getExternalFilesDir(null), "crash.txt"), true);
-                    fw.write(new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date())
+                    java.io.FileWriter fw = new java.io.FileWriter(new java.io.File(getExternalFilesDir(null), "crash.txt"), true);
+                    fw.write(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date())
                         + " " + android.util.Log.getStackTraceString(e) + "\n\n");
                     fw.close();
                 } catch (Exception ignored) {}
                 if (def != null) def.uncaughtException(t, e);
             }
         });
-        org.videolan.R.layout.vlc_video_layout = com.wink.pillmate.R.layout.vlc_video_layout;
-        org.videolan.R.layout.player_remote = com.wink.pillmate.R.layout.player_remote;
-        org.videolan.R.color.black = com.wink.pillmate.R.color.black;
-        org.videolan.R.id.player_surface_frame = com.wink.pillmate.R.id.player_surface_frame;
-        org.videolan.R.id.surface_video = com.wink.pillmate.R.id.surface_video;
-        org.videolan.R.id.surface_stub = com.wink.pillmate.R.id.surface_stub;
-        org.videolan.R.id.surface_subtitles = com.wink.pillmate.R.id.surface_subtitles;
-        org.videolan.R.id.subtitles_surface_stub = com.wink.pillmate.R.id.subtitles_surface_stub;
-        org.videolan.R.id.texture_video = com.wink.pillmate.R.id.texture_video;
-        org.videolan.R.id.texture_stub = com.wink.pillmate.R.id.texture_stub;
-        org.videolan.R.id.remote_player_surface = com.wink.pillmate.R.id.remote_player_surface;
-        org.videolan.R.id.remote_player_surface_frame = com.wink.pillmate.R.id.remote_player_surface_frame;
-        org.videolan.R.id.remote_subtitles_surface = com.wink.pillmate.R.id.remote_subtitles_surface;
         try {
             setContentView(R.layout.activity_player);
         } catch (Throwable t) {
-            log("布局加载失败: " + t);
             showError("布局加载失败", t);
             return;
         }
+        // 全出血窗口：铺满整屏含刘海/系统栏区域，背景纯黑（消除上下白边）
         getWindow().setBackgroundDrawableResource(android.R.color.black);
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             WindowManager.LayoutParams lp = getWindow().getAttributes();
@@ -178,7 +154,7 @@ public class PlayerActivity extends Activity {
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         try {
-            videoLayout = findViewById(R.id.videoLayout);
+            videoSurface = findViewById(R.id.videoLayout);
             seek = findViewById(R.id.seek);
             bottomProgress = findViewById(R.id.bottomProgress);
             tvTime = findViewById(R.id.tvTime);
@@ -202,20 +178,14 @@ public class PlayerActivity extends Activity {
             }
             LiveProxy.startRefresher();
             mergeLeftoverTemps();
-
             String autoUrl = getIntent().getStringExtra("autoUrl");
-            log("onCreate autoUrl=" + autoUrl);
             if (autoUrl != null && !autoUrl.isEmpty()) {
                 setPlayState("直播代理模式: " + autoUrl);
                 play(Uri.parse(autoUrl));
-            } else {
-                log("没有 autoUrl，等待用户操作");
             }
         } catch (Throwable t) {
-            log("初始化失败: " + t);
             showError("初始化失败", t);
         }
-        log("=== onCreate end ===");
     }
 
     private void applyImmersive() {
@@ -235,6 +205,7 @@ public class PlayerActivity extends Activity {
         if (hasFocus) applyImmersive();
     }
 
+    // DK：控制条显示 4 秒后自动淡出（mDefaultTimeout=4000）
     private static final long CONTROLLER_TIMEOUT = 4000L;
     private final Runnable fadeOut = new Runnable() {
         public void run() {
@@ -259,6 +230,8 @@ public class PlayerActivity extends Activity {
 
     private void showLoading() { runOnUiThread(new Runnable() { public void run() { loading.setVisibility(View.VISIBLE); } }); }
     private void hideLoading() { runOnUiThread(new Runnable() { public void run() { loading.setVisibility(View.GONE); } }); }
+
+
 
     private android.widget.TextView tvPlayState;
 
@@ -308,6 +281,7 @@ public class PlayerActivity extends Activity {
         }
     }
 
+    /** 全屏：不动视频容器（Surface 重挂会黑屏），只隐藏底部栏 + 横屏 + 沉浸 */
     private void startFullScreen() {
         if (fullscreen) return;
         fullscreen = true;
@@ -340,13 +314,13 @@ public class PlayerActivity extends Activity {
             getApplicationContext().registerReceiver(stopRecReceiver, new android.content.IntentFilter("pillmate_stop_rec"));
         }
 
+        // 抖哔解析面板：出地址直接开播
         findViewById(R.id.btnDouchi).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 parseSink = new ParseSink() {
                     public void onParsed(String url) {
                         runOnUiThread(new Runnable() {
                             public void run() {
-                                log("抖哔解析返回 url=" + url);
                                 setPlayState("▶ 抖哔解析: " + url);
                                 play(Uri.parse(url));
                             }
@@ -361,6 +335,7 @@ public class PlayerActivity extends Activity {
             public void onClick(View v) { toggleRec(); }
         });
 
+        // 点视频区 显示/隐藏 内置控制条（DK：显示后 4 秒自动淡出）
         videoContainer.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (controlsOverlay.getVisibility() == View.VISIBLE) hideController();
@@ -368,6 +343,7 @@ public class PlayerActivity extends Activity {
             }
         });
 
+        // 后台播放模式：开启后 Home 出去继续出声
         btnBg.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 backgroundMode = !backgroundMode;
@@ -375,6 +351,7 @@ public class PlayerActivity extends Activity {
             }
         });
 
+        // 倍速（B 站风格：右侧竖排菜单，当前倍速高亮）
         tvSpeed = findViewById(R.id.tvSpeed);
         speedMenu = findViewById(R.id.speedMenu);
         float[] speeds = {3.0f, 2.5f, 2.0f, 1.5f, 1.25f, 1.0f, 0.75f, 0.5f, 0.25f};
@@ -391,7 +368,7 @@ public class PlayerActivity extends Activity {
             item.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
                     try {
-                        if (player != null) player.setRate(sp);
+                        if (player != null) player.setPlaybackSpeed(sp);
                         curSpeed = sp;
                         refreshSpeedMenu();
                         speedMenu.setVisibility(View.GONE);
@@ -411,6 +388,8 @@ public class PlayerActivity extends Activity {
             }
         });
 
+        // 全屏：DK 横屏（跟随传感器正反向）；退出回竖屏；顶栏/底栏隐藏
+        // DK 式全屏：播放器容器挂到 DecorView（真正只有视频），横屏
         findViewById(R.id.btnFull).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 try {
@@ -454,8 +433,8 @@ public class PlayerActivity extends Activity {
             public void onStartTrackingTouch(SeekBar sb) {}
             public void onStopTrackingTouch(SeekBar sb) {
                 try {
-                    if (player != null && player.getLength() > 0)
-                        player.setTime(sb.getProgress() * player.getLength() / 1000);
+                    if (player != null && player.getDuration() > 0)
+                        player.seekTo(sb.getProgress() * player.getDuration() / 1000);
                 } catch (Throwable ignored) {}
                 showController();
             }
@@ -467,17 +446,16 @@ public class PlayerActivity extends Activity {
         super.onActivityResult(req, res, data);
         if (req == 2 && res == RESULT_OK && data != null) {
             String url = data.getStringExtra("url");
-            log("嗅探返回 url=" + url);
             setPlayState("收到嗅探地址: " + url);
             if (url != null && !url.isEmpty()) {
-                play(Uri.parse(url));
+                                play(Uri.parse(url));
             }
             return;
         }
         if (req == 1 && res == RESULT_OK && data != null && data.getData() != null) {
             try {
                 Uri uri = data.getData();
-                play(uri);
+                                play(uri);
             } catch (Throwable t) {
                 showError("播放失败", t);
             }
@@ -485,61 +463,33 @@ public class PlayerActivity extends Activity {
     }
 
     private void ensurePlayer() {
-        log("ensurePlayer: libVLC=" + libVLC + ", player=" + player);
-        if (libVLC == null) {
-            libVLC = new LibVLC(this, officialArgs());
-            log("ensurePlayer: new LibVLC 完成");
-        }
         if (player == null) {
-            player = new MediaPlayer(libVLC);
-            player.setEventListener(new MediaPlayer.EventListener() {
-                public void onEvent(MediaPlayer.Event e) {
-                    log("VLC Event: type=" + e.type + " buffering=" + (e.type == MediaPlayer.Event.Buffering ? e.getBuffering() : -1));
-                    switch (e.type) {
-                        case MediaPlayer.Event.Playing: hideLoading(); setPlayState("▶ 播放中"); break;
-                        case MediaPlayer.Event.Paused: hideLoading(); showMsg("⏸ 暂停"); break;
-                        case MediaPlayer.Event.Buffering:
-                            setPlayState("缓冲 " + (int) e.getBuffering() + "%");
-                            if (e.getBuffering() < 100) showLoading(); else hideLoading();
-                            break;
-                        case MediaPlayer.Event.EndReached: hideLoading(); showMsg("⏹ 播放结束"); break;
-                        case MediaPlayer.Event.EncounteredError: hideLoading(); setPlayState("❌ 解码/打开错误: " + currentMediaUrl); break;
-                        case MediaPlayer.Event.Vout: log("Vout 事件（视频输出已建立）"); break;
-                    }
+            player = new ExoPlayer.Builder(this).build();
+            player.addListener(new Player.Listener() {
+                public void onPlaybackStateChanged(int st) {
+                    if (st == Player.STATE_BUFFERING) showLoading();
+                    else if (st == Player.STATE_READY) hideLoading();
+                    else if (st == Player.STATE_ENDED) { hideLoading(); setPlayState("⏹ 播放结束"); }
+                }
+                public void onPlayerError(PlaybackException e) {
+                    hideLoading();
+                    setPlayState("❌ 播放错误: " + currentMediaUrl + " / " + e.getMessage());
+                }
+                public void onIsPlayingChanged(boolean ip) {
+                    btnToggle.setText(ip ? "Ⅱ" : "▶");
                 }
             });
-            player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
-            log("ensurePlayer: new MediaPlayer 完成");
+            player.setVideoSurfaceView(videoSurface);
         }
     }
 
-    private ArrayList<String> officialArgs() {
-        ArrayList<String> options = new ArrayList<String>();
-        options.add("--network-caching=3000");
-        options.add("--live-caching=3000");
-        options.add("--audio-time-stretch");
-        options.add("--avcodec-skiploopfilter");
-        options.add("1");
-        options.add("--avcodec-skip-frame");
-        options.add("0");
-        options.add("--avcodec-skip-idct");
-        options.add("0");
-        options.add("--audio-resampler");
-        options.add("soxr");
-        options.add("--freetype-rel-fontsize");
-        options.add("16");
-        options.add("--sout-keep");
-        options.add("-vv");
-        String dir = getDir("vlc", MODE_PRIVATE).getAbsolutePath();
-        options.add("--keystore");
-        options.add("file_crypt,none");
-        options.add("--keystore-file");
-        options.add(new File(dir, "keystore").getAbsolutePath());
-        return options;
-    }
 
     private java.io.File bridgeFile = null;
 
+
+
+
+    // ---------- 直播录制（纯 Java 拉流写文件，支持多路并行） ----------
     private static class RecJob {
         volatile boolean active = true;
         volatile java.net.HttpURLConnection conn;
@@ -572,6 +522,7 @@ public class PlayerActivity extends Activity {
     private void toggleRec() {
         String u = currentMediaUrl;
         if (u == null || u.isEmpty() || "-".equals(u) || !u.startsWith("http")) {
+            
             return;
         }
         startRecJob(u);
@@ -615,14 +566,18 @@ public class PlayerActivity extends Activity {
                     }
                     fo.close(); in.close();
                     try { c.disconnect(); } catch (Throwable ignored) {}
+                    final long sz = total;
+                    final String fname = job.name;
                 } catch (Throwable t) {
                     try { if (fo != null) fo.close(); } catch (Exception ignored) {}
                     try { if (job.conn != null) job.conn.disconnect(); } catch (Exception ignored) {}
+                    final String msg = t.getMessage();
                 } finally {
                     job.active = false;
                     recJobs.remove(jid);
                     try { nmCancel(job.notifId); } catch (Throwable ignored) {}
                     releaseWakeIfIdle();
+                    // 转封装 flv→mp4（-c copy 秒级），获得可拖动快进的文件
                     if (job.file != null && job.file.length() > 0 && job.file.getName().endsWith(".flv")) {
                         try {
                             String mp4 = job.file.getAbsolutePath().replace(".flv", ".mp4");
@@ -638,6 +593,7 @@ public class PlayerActivity extends Activity {
                 }
             }
         }).start();
+        
     }
 
     private void stopJob(int jid) {
@@ -686,101 +642,19 @@ public class PlayerActivity extends Activity {
         }
     };
 
-    /**
-     * ★★★ 关键改动：换流时直接重启 Activity，彻底绕开 Surface 复用问题 ★★★
-     */
     private void play(Uri uri) {
-        final String newUrl = uri.toString();
-
-        // 已经是当前 URL 且正在播放 → 忽略
-        if (newUrl.equals(currentMediaUrl) && player != null && player.isPlaying()) {
-            log("play: 同 URL 且正在播放，忽略");
-            return;
-        }
-
-        // 如果已经有正在播放/已装载的媒体 → 换流 → 直接重启 Activity
-        if (player != null && currentMediaUrl != null && !"-".equals(currentMediaUrl)
-            && !currentMediaUrl.equals(newUrl)) {
-            log("play: 检测到换流，重启 Activity 从 " + currentMediaUrl + " → " + newUrl);
-            setPlayState("正在切换媒体，重启播放器…");
-
-            // 先把旧实例销毁掉，避免重启后内存泄漏
-            try { player.stop(); } catch (Throwable ignored) {}
-            try { if (player.getVLCVout().areViewsAttached()) player.detachViews(); } catch (Throwable ignored) {}
-            try { player.release(); } catch (Throwable ignored) {}
-            player = null;
-            try { if (libVLC != null) libVLC.release(); } catch (Throwable ignored) {}
-            libVLC = null;
-
-            Intent intent = new Intent(PlayerActivity.this, PlayerActivity.class);
-            intent.putExtra("autoUrl", newUrl);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
-            startActivity(intent);
-            finish();
-            overridePendingTransition(0, 0);
-            return;
-        }
-
-        // 首次播放（player == null 或 currentMediaUrl == "-"），走正常流程
-        log("play: 首次播放 uri=" + uri);
-        currentMediaUrl = newUrl;
-        currentUrl = newUrl;
+        currentMediaUrl = uri.toString();
+        currentUrl = uri.toString();
         setPlayState("开始播放: " + uri);
-        showLoading();
-
-        runOnUiThread(new Runnable() {
-            public void run() {
-                try {
-                    ensurePlayer();
-
-                    // attachViews
-                    try {
-                        if (!player.getVLCVout().areViewsAttached()) {
-                            player.attachViews(videoLayout, null, true, false);
-                            player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
-                            log("play: attachViews 完成");
-                        }
-                    } catch (Throwable t) {
-                        log("play: attachViews 失败 " + t);
-                    }
-
-                    // 给 Surface 一点时间稳定
-                    handler.postDelayed(new Runnable() {
-                        public void run() {
-                            try {
-                                Media m;
-                                String scheme = uri.getScheme();
-                                if ("content".equals(scheme) || "file".equals(scheme)) {
-                                    if (pfd != null) { try { pfd.close(); } catch (Exception ignored) {} }
-                                    pfd = getContentResolver().openFileDescriptor(uri, "r");
-                                    if (pfd == null) throw new Exception("无法打开文件描述符");
-                                    m = new Media(libVLC, pfd.getFileDescriptor());
-                                } else {
-                                    m = new Media(libVLC, uri);
-                                    m.setHWDecoderEnabled(true, true);
-                                    m.addOption(":no-mediacodec-dr");
-                                    m.addOption(":no-omxil-dr");
-                                }
-                                player.setMedia(m);
-                                m.release();
-                                setPlayState("已装载媒体，启动播放…");
-                                player.play();
-                                showController();
-                                log("play: player.play() 已调用");
-                            } catch (Throwable t) {
-                                log("play: setMedia/play 失败 " + t);
-                                hideLoading();
-                                showError("播放失败", t);
-                            }
-                        }
-                    }, 300);
-                } catch (Throwable t) {
-                    log("play: 外层失败 " + t);
-                    hideLoading();
-                    showError("播放失败", t);
-                }
-            }
-        });
+        try {
+            ensurePlayer();
+            player.setMediaItem(MediaItem.fromUri(uri));
+            player.prepare();
+            player.play();
+            showController();
+        } catch (Throwable t) {
+            showError("播放失败", t);
+        }
     }
 
     private void showMsg(final String msg) {
@@ -790,7 +664,7 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        log("onStop");
+        // 默认退到后台就暂停；开了后台播放模式则继续出声
         if (!backgroundMode && recJobs.isEmpty() && player != null) {
             try { player.pause(); } catch (Throwable ignored) {}
         }
@@ -799,21 +673,12 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        log("onResume, player=" + player + ", currentMediaUrl=" + currentMediaUrl);
         try {
-            if (player != null && currentMediaUrl != null && !"-".equals(currentMediaUrl)) {
-                if (!player.getVLCVout().areViewsAttached()) {
-                    player.attachViews(videoLayout, null, true, false);
-                    player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
-                    log("onResume: re-attachViews");
-                }
-                player.play();
-            }
+            if (player != null && currentMediaUrl != null && !"-".equals(currentMediaUrl)) player.play();
         } catch (Throwable ignored) {}
     }
 
     private void showError(String title, Throwable t) {
-        log("showError: " + title + " " + t);
         StringBuilder sb = new StringBuilder(title + "\n" + t + "\n");
         Throwable c = t.getCause();
         while (c != null) {
@@ -835,20 +700,12 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        log("onDestroy");
+        stopAllRec();
         parseSink = null;
+        if (player != null) { try { player.release(); } catch (Throwable ignored) {} player = null; }
         super.onDestroy();
         handler.removeCallbacks(tick);
         handler.removeCallbacks(fadeOut);
-        if (player != null) {
-            try { if (player.getVLCVout().areViewsAttached()) player.detachViews(); } catch (Throwable ignored) {}
-            try { player.release(); } catch (Throwable ignored) {}
-            player = null;
-        }
-        if (pfd != null) { try { pfd.close(); } catch (Exception ignored) {} pfd = null; }
-        if (libVLC != null) {
-            try { libVLC.release(); } catch (Throwable ignored) {}
-            libVLC = null;
-        }
     }
 }
+
