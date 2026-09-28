@@ -220,18 +220,28 @@ public class RecordActivity extends Activity {
     }
 
     private void openDir() {
-        // 1) MT 管理器指定入口，带目标目录
+        // 1) MT 管理器 OpenFileActivity（data+type 都给）
         try {
             Intent i = new Intent(Intent.ACTION_VIEW);
             i.setClassName("bin.mt.plus", "bin.mt.plus.OpenFileActivity");
-            i.setData(android.net.Uri.parse("file:///storage/emulated/0/Movies/录制"));
+            i.setDataAndType(android.net.Uri.parse("file:///storage/emulated/0/Movies/录制"), "resource/folder");
             i.putExtra("path", "/storage/emulated/0/Movies/录制");
             i.putExtra("com.bin.mt.plus.path", "/storage/emulated/0/Movies/录制");
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(i);
             return;
         } catch (Throwable ignored) {}
-        // 2) 系统目录选择器，直接定位到 Movies/录制
+        // 2) MT MainLightIcon
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setClassName("bin.mt.plus", "bin.mt.plus.MainLightIcon");
+            i.setDataAndType(android.net.Uri.parse("file:///storage/emulated/0/Movies/录制"), "resource/folder");
+            i.putExtra("path", "/storage/emulated/0/Movies/录制");
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(i);
+            return;
+        } catch (Throwable ignored) {}
+        // 3) 系统目录选择器，直接定位到 Movies/录制
         try {
             android.net.Uri dir = android.net.Uri.parse(
                 "content://com.android.externalstorage.documents/document/primary:Movies/录制");
