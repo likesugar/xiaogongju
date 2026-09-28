@@ -701,9 +701,19 @@ public class PlayerActivity extends Activity {
         currentUrl = uri.toString();
         setPlayState("开始播放: " + uri);
         try {
+            // 换流 → 销毁重建整个播放器实例（等价“退出重进”，根治换流黑屏）
+            boolean switching = currentMediaUrl != null && !"-".equals(currentMediaUrl)
+                && !currentMediaUrl.equals(uri.toString());
+            if (switching && player != null) {
+                try { player.stop(); } catch (Throwable ignored) {}
+                try { if (player.getVLCVout().areViewsAttached()) player.detachViews(); } catch (Throwable ignored) {}
+                try { player.release(); } catch (Throwable ignored) {}
+                player = null;
+                try { libVLC.release(); } catch (Throwable ignored) {}
+                libVLC = null;
+            }
             ensurePlayer();
             player.stop();
-            try { if (player.getVLCVout().areViewsAttached()) player.detachViews(); } catch (Throwable ignored) {}
             Media m;
             String scheme = uri.getScheme();
             if ("content".equals(scheme) || "file".equals(scheme)) {
@@ -720,16 +730,6 @@ public class PlayerActivity extends Activity {
             m.release();
             setPlayState("已装载媒体，启动播放…");
             player.play();
-            // 延迟重挂视频输出（立即挂会与新 Surface 竞争导致黑屏）
-            handler.postDelayed(new Runnable() {
-                public void run() {
-                    try {
-                        if (!player.getVLCVout().areViewsAttached()) {
-                            player.attachViews(videoLayout, null, true, false);
-                        }
-                    } catch (Throwable ignored) {}
-                }
-            }, 300);
             showController();
         } catch (Throwable t) {
             showError("播放失败", t);
