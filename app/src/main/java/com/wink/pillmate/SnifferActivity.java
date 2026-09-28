@@ -14,6 +14,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
@@ -167,6 +168,15 @@ public class SnifferActivity extends Activity {
             }
         });
 
+        findViewById(R.id.btnKbPlay).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                try {
+                    Intent it = new Intent(SnifferActivity.this, PlayerActivity.class);
+                    it.putExtra("autoUrl", "http://127.0.0.1:" + LiveProxy.PORT + "/playlist.m3u8");
+                    startActivity(it);
+                } catch (Throwable t) { Toast.makeText(SnifferActivity.this, "打开失败", Toast.LENGTH_SHORT).show(); }
+            }
+        });
         findViewById(R.id.btnGo).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 load(((EditText) findViewById(R.id.etSniffUrl)).getText().toString().trim());
@@ -194,20 +204,13 @@ public class SnifferActivity extends Activity {
             LiveProxy.mediaUrl = url;
             getSharedPreferences("settings", MODE_PRIVATE).edit().putString("mediaUrl", url).apply();
             LiveProxy.fetchLatest(url);
-            if (!launched) {
-                launched = true;
-                // 竞态修复：等 refresher 抓到第一份播放列表再拉播放器（最多 8s）
-                final android.content.Context ctx = this;
-                new Thread(new Runnable() { public void run() {
-                    for (int i = 0; i < 16 && LiveProxy.latestBody == null; i++) {
-                        try { Thread.sleep(500); } catch (Exception ignored) {}
-                    }
-                    Intent it = new Intent(ctx, PlayerActivity.class);
-                    it.putExtra("autoUrl", "http://127.0.0.1:" + LiveProxy.PORT + "/playlist.m3u8");
-                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    ctx.startActivity(it);
-                }}).start();
-            }
+            // 全手动：不自动跳播放器，点底部“▶ 播放”自己进
+            runOnUiThread(new Runnable() { public void run() {
+                TextView r = findViewById(R.id.tvSniffResult);
+                TextView b = findViewById(R.id.btnKbPlay);
+                if (r != null) r.setText("已嗅探到直播流，点 ▶ 播放，或去下载页录制");
+                if (b != null) b.setVisibility(View.VISIBLE);
+            }});
         }
     }
 

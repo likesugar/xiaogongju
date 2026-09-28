@@ -30,9 +30,19 @@
         android:layout_width="match_parent" android:layout_height="0dp"
         android:layout_weight="1"/>
 
-    <TextView
+    <LinearLayout
         android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:background="#2B303B" android:padding="6dp"
-        android:text="嗅探结果" android:textColor="#FFFFFF" android:textSize="13sp"/>
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:background="#2B303B" android:padding="6dp">
+        <TextView
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:id="@+id/tvSniffResult"
+            android:text="嗅探结果" android:textColor="#FFFFFF" android:textSize="13sp"/>
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:id="@+id/btnKbPlay" android:padding="8dp"
+            android:text="▶ 播放" android:textColor="#7FD1FF" android:textSize="15sp"
+            android:textStyle="bold" android:visibility="gone"/>
+    </LinearLayout>
 
 </LinearLayout>
