@@ -238,6 +238,49 @@ public class LiveProxy {
                 return;
             }
 
+            if (path.startsWith("/dy")) {
+                // 抖音中转：u=原始媒体地址，带抖音 Referer/UA
+                try {
+                    String raw = URLDecoder.decode(queryParam(path, "u"), "UTF-8");
+                    String range = null;
+                    String hl;
+                    while ((hl = br.readLine()) != null && !hl.isEmpty()) {
+                        if (hl.toLowerCase().startsWith("range:")) range = hl.substring(6).trim();
+                    }
+                    HttpURLConnection oc = (HttpURLConnection) new URL(raw).openConnection();
+                    oc.setConnectTimeout(8000);
+                    oc.setReadTimeout(30000);
+                    oc.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile");
+                    oc.setRequestProperty("Referer", "https://www.douyin.com/");
+                    if (range != null) oc.setRequestProperty("Range", range);
+                    int code = oc.getResponseCode();
+                    if (code == 200 || code == 206) {
+                        OutputStream os = s.getOutputStream();
+                        StringBuilder hh = new StringBuilder("HTTP/1.1 " + code + (code == 206 ? " Partial Content" : " OK") + "\r\n");
+                        String cr = oc.getHeaderField("Content-Range");
+                        String cl = oc.getHeaderField("Content-Length");
+                        String ct = oc.getHeaderField("Content-Type");
+                        hh.append("Content-Type: ").append(ct != null ? ct : "video/mp4").append("\r\n");
+                        if (cr != null) hh.append("Content-Range: ").append(cr).append("\r\n");
+                        if (cl != null) hh.append("Content-Length: ").append(cl).append("\r\n");
+                        hh.append("Accept-Ranges: bytes\r\nConnection: close\r\n\r\n");
+                        os.write(hh.toString().getBytes());
+                        InputStream in = oc.getInputStream();
+                        byte[] rb = new byte[65536];
+                        int rn;
+                        while ((rn = in.read(rb)) > 0) os.write(rb, 0, rn);
+                        os.flush();
+                        in.close(); oc.disconnect();
+                        return;
+                    }
+                    oc.disconnect();
+                    writeResp(s, "404 Not Found", "text/plain", "dy upstream err".getBytes());
+                } catch (Throwable e) {
+                    writeResp(s, "404 Not Found", "text/plain", "dy relay err".getBytes());
+                }
+                return;
+            }
+
             if (path.startsWith("/playlist.m3u8")) {
                 byte[] body = latestBody;
                 if (body == null) { writeResp(s, "404 Not Found", "text/plain", "no stream".getBytes()); return; }

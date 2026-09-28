@@ -89,12 +89,16 @@ public class DouyinActivity extends Activity {
             @Override
             public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                // 源码同款嗅探规则：.flv / .m3u8 / stream-
-                if (url.contains(".flv") || url.contains(".m3u8") || url.contains("stream-")) {
-                    if (foundUrls.add(url)) {
-                        final String f = url;
-                        main.post(new Runnable() { public void run() { addRecord(f); } });
-                    }
+                if (url.contains("/log/")) return null;
+                // 源码规则（直播 flv/m3u8/stream-）+ 视频页扩展（douyinvod mp4/m4s、playwm 直链）
+                String l = url.toLowerCase();
+                boolean hit = l.contains(".flv") || l.contains(".m3u8") || l.contains("stream-")
+                    || l.contains(".mp4") || l.contains(".m4s")
+                    || l.contains("douyinvod") || l.contains("/aweme/v1/play")
+                    || l.contains("playwm");
+                if (hit && foundUrls.add(url)) {
+                    final String f = url;
+                    main.post(new Runnable() { public void run() { addRecord(f); } });
                 }
                 return null;
             }
@@ -180,9 +184,14 @@ public class DouyinActivity extends Activity {
         if (cur != null && !cur.startsWith("data:")) webView.loadUrl(cur);
     }
 
-    private void addRecord(final String streamUrl) {
+    private void addRecord(final String rawUrl) {
         recordId++;
         final int id = recordId;
+        // douyinvod/playwm 直链需要 Referer → 走本地 /dy 代理
+        String lu = rawUrl.toLowerCase();
+        final String streamUrl = (lu.contains("douyinvod") || lu.contains("/aweme/v1/play") || lu.contains("playwm"))
+            ? ("http://127.0.0.1:8123/dy?u=" + android.net.Uri.encode(rawUrl))
+            : rawUrl;
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
