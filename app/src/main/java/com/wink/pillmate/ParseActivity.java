@@ -452,10 +452,14 @@ public class ParseActivity extends Activity {
             bgWeb.evaluateJavascript(
                 "(function(){var m=document.querySelectorAll('video');for(var i=0;i<m.length;i++){try{m[i].pause();m[i].removeAttribute('src');m[i].load();}catch(e){}}})()", null);
         }
-        // 每次新开播放器实例（15.1 验证过的模式，规避换流黑屏）
-        Intent it = new Intent(this, PlayerActivity.class);
-        it.putExtra("autoUrl", streamUrl);
-        startActivity(it);
+        // 原地播放：地址直接交给底层播放器，不跳新页面
+        if (PlayerActivity.parseSink != null) {
+            PlayerActivity.parseSink.onParsed(streamUrl);
+        } else {
+            Intent it = new Intent(this, PlayerActivity.class);
+            it.putExtra("autoUrl", streamUrl);
+            startActivity(it);
+        }
     }
 
     @Override
