@@ -574,12 +574,11 @@ public class PlayerActivity extends Activity {
                 "-y", out.getAbsolutePath()};
             recFilePath = out.getAbsolutePath();
             final String fname = name;
-            recSession = com.arthenica.ffmpegkit.FFmpegKit.executeWithArgumentsAsync(cmd,
-                new com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback() {
-                    public void apply(com.arthenica.ffmpegkit.FFmpegSession st) {
-                        recSession = null;
-                    }
-                }, null);
+            new Thread(new Runnable() {
+                public void run() {
+                    recSession = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(cmd);
+                }
+            }).start();
             android.widget.Toast.makeText(this, "开始录制 → 录制/" + fname + "（再点下载=停止）", Toast.LENGTH_LONG).show();
         } catch (Throwable t) {
             android.widget.Toast.makeText(this, "录制失败: " + t.getMessage(), Toast.LENGTH_SHORT).show();
@@ -598,10 +597,11 @@ public class PlayerActivity extends Activity {
             "-c", "copy", "-f", "mpegts",
             "udp://127.0.0.1:" + udpPort + "?pkt_size=1316"};
         setPlayState("桥接转封装中…");
-        flvBridge = com.arthenica.ffmpegkit.FFmpegKit.executeWithArgumentsAsync(cmd,
-            new com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback() {
-                public void apply(com.arthenica.ffmpegkit.FFmpegSession st) { }
-            }, null);
+        new Thread(new Runnable() {
+            public void run() {
+                flvBridge = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(cmd);
+            }
+        }).start();
         new Thread(new Runnable() {
             public void run() {
                 try { Thread.sleep(1500); } catch (Exception ignored) {}
