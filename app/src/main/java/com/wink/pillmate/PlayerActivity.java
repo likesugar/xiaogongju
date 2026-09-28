@@ -489,8 +489,7 @@ public class PlayerActivity extends Activity {
                     }
                 }
             });
-            player.attachViews(videoLayout, null, true, false);
-            // 保持比例（不拉伸）；全出血窗口下遮幅边为纯黑
+            // 首次 attachViews 放到 play() 里做，保证 Surface 干净
             player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
         }
     }
@@ -677,8 +676,12 @@ public class PlayerActivity extends Activity {
 
     /**
      * 播放/换流：
-     * 关键修复：不再销毁重建 libVLC 和 MediaPlayer，只复用实例。
-     * 换流时先 stop，等一小会儿让 Surface 和解码器释放，再 setMedia + play。
+     * 修复黑屏关键：
+     * 1. 先 stop 停止旧流
+     * 2. 强制 detachViews 清理旧的视频 Surface
+     * 3. 延时 300ms 让 VLC 底层释放 MediaCodec / Surface
+     * 4. 重新 attachViews 拿到干净的新 Surface
+     * 5. setMedia + play
      */
     private void play(Uri uri) {
         final String newUrl = uri.toString();
@@ -699,19 +702,22 @@ public class PlayerActivity extends Activity {
         setPlayState("开始播放: " + uri);
         showLoading();
 
-        // 切到主线程做播放器操作，避免多线程并发操作 VLC 内部状态
         runOnUiThread(new Runnable() {
             public void run() {
                 try {
                     ensurePlayer();
 
-                    // 1. 停止当前播放（同步）
+                    // 1. 停止当前播放
+                    try { player.stop(); } catch (Throwable ignored) {}
+
+                    // 2. ★ 强制解绑 Surface，清理视频层
                     try {
-                        if (player.isPlaying()) player.stop();
-                        else player.stop();
+                        if (player.getVLCVout().areViewsAttached()) {
+                            player.detachViews();
+                        }
                     } catch (Throwable ignored) {}
 
-                    // 2. 给底层一点时间释放 Surface / 解码器
+                    // 3. 延时让底层彻底释放 Surface / MediaCodec
                     handler.postDelayed(new Runnable() {
                         public void run() {
                             try {
@@ -724,17 +730,16 @@ public class PlayerActivity extends Activity {
                                     m = new Media(libVLC, pfd.getFileDescriptor());
                                 } else {
                                     m = new Media(libVLC, uri);
-                                    m.setHWDecoderEnabled(true, true);
-                                    m.addOption(":no-mediacodec-dr");
-                                    m.addOption(":no-omxil-dr");
+                                    // ★ 关闭硬件解码器，避免换流时 MediaCodec 释放不干净导致黑屏
+                                    m.setHWDecoderEnabled(false, false);
+                                    m.addOption(":no-mediacodec");
+                                    m.addOption(":no-omxil");
                                 }
 
-                                // 确保 Surface 仍然挂载
+                                // 4. ★ 重新挂 Surface，再 setMedia
                                 try {
-                                    if (!player.getVLCVout().areViewsAttached()) {
-                                        player.attachViews(videoLayout, null, true, false);
-                                        player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
-                                    }
+                                    player.attachViews(videoLayout, null, true, false);
+                                    player.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
                                 } catch (Throwable ignored) {}
 
                                 player.setMedia(m);
@@ -749,7 +754,7 @@ public class PlayerActivity extends Activity {
                                 switchingMedia = false;
                             }
                         }
-                    }, 250);
+                    }, 300);
 
                 } catch (Throwable t) {
                     switchingMedia = false;
