@@ -635,6 +635,7 @@ public class PlayerActivity extends Activity {
         recJobs.put(job.id, job);
         stoppedJobs.remove(job.id);
         acquireWake();
+        updateRecNote();
         job.thread = new Thread(new Runnable() {
             public void run() {
                 java.io.FileOutputStream fo = null;
@@ -667,6 +668,7 @@ public class PlayerActivity extends Activity {
                     job.startTs = 0;
                     job.active = false;
                     recJobs.remove(job.id);
+                    updateRecNote();
                     releaseWakeIfIdle();
                     try {   // 收尾：解除 pending，让系统文件管理器可见
                         android.content.ContentValues cv = new android.content.ContentValues();
@@ -765,6 +767,27 @@ public class PlayerActivity extends Activity {
         try {
             android.app.NotificationManager nm = (android.app.NotificationManager) sCtx.getSystemService(Context.NOTIFICATION_SERVICE);
             nm.cancel(id);
+        } catch (Throwable ignored) {}
+    }
+
+    /** 单条录制总通知：X路 · 点击进入 VLC 播放器 */
+    private static void updateRecNote() {
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) sCtx.getSystemService(Context.NOTIFICATION_SERVICE);
+            int cnt = recJobs.size();
+            if (cnt == 0) { nm.cancel(9100); return; }
+            android.app.NotificationChannel ch = new android.app.NotificationChannel("rec", "直播录制", android.app.NotificationManager.IMPORTANCE_LOW);
+            nm.createNotificationChannel(ch);
+            android.app.Notification nt = new android.app.Notification.Builder(sCtx, "rec")
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentTitle("小工具 · 录制中 " + cnt + " 路")
+                .setContentText("点击进入 VLC 播放器")
+                .setOngoing(true)
+                .setContentIntent(android.app.PendingIntent.getActivity(sCtx, 9100,
+                    new Intent(sCtx, PlayerActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT))
+                .build();
+            nm.notify(9100, nt);
         } catch (Throwable ignored) {}
     }
 
