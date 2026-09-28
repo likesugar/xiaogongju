@@ -70,6 +70,16 @@ public class SnifferActivity extends Activity {
             }
 
             @Override
+            public void onPageFinished(WebView view, String url) {
+                // 页内换房间也重置嗅探锁，允许锁定新直播间的最高档
+                mediaLocked = false;
+                TextView r = findViewById(R.id.tvSniffResult);
+                TextView b = findViewById(R.id.btnKbPlay);
+                if (r != null) r.setText("嗅探结果");
+                if (b != null) b.setVisibility(View.GONE);
+            }
+
+            @Override
             public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 try {
                     if (!"GET".equalsIgnoreCase(request.getMethod())) return null;
