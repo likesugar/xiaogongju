@@ -223,7 +223,7 @@ public class RecordActivity extends Activity {
         // 1) MT 管理器指定入口，带目标目录
         try {
             Intent i = new Intent(Intent.ACTION_VIEW);
-            i.setClassName("bin.mt.plus", "bin.mt.plus.MainLightIcon");
+            i.setClassName("bin.mt.plus", "bin.mt.plus.OpenFileActivity");
             i.setData(android.net.Uri.parse("file:///storage/emulated/0/Movies/录制"));
             i.putExtra("path", "/storage/emulated/0/Movies/录制");
             i.putExtra("com.bin.mt.plus.path", "/storage/emulated/0/Movies/录制");
