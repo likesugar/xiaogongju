@@ -184,6 +184,17 @@ public class ParseActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setUserAgentString(mobileUA ? UA_MOBILE : UA_DESKTOP);
         CookieManager.getInstance().setAcceptThirdPartyCookies(bgWeb, true);
+        // 后台静音：页面视频不许出声
+        final Handler mh2 = new Handler(Looper.getMainLooper());
+        final Runnable muteTask2 = new Runnable() {
+            public void run() {
+                if (bgWeb == null) return;
+                bgWeb.evaluateJavascript(
+                    "(function(){var m=document.querySelectorAll('video,audio');for(var i=0;i<m.length;i++)m[i].muted=true;})()", null);
+                mh2.postDelayed(this, 1200);
+            }
+        };
+        mh2.postDelayed(muteTask2, 500);
         bgWeb.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
