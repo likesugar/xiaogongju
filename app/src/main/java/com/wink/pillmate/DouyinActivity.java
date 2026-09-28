@@ -284,13 +284,16 @@ public class DouyinActivity extends Activity {
         final int id = recordId;
         final String streamUrl = rawUrl;   // 直连最高画质原始流
 
-        // 直播流按 stream-<id> 分组，只留 biz_vbitrate 最高那条
+        // 直播流按 stream-<id> 分组，只留最高分：wsSecret(wsTime) 可播直链优先，volcSecret 型播放黑屏降权
         String streamKey = "";
         long bitrate = -1;
         Matcher km = Pattern.compile("stream-\\d+").matcher(rawUrl);
         if (km.find()) streamKey = km.group();
         Matcher bm = Pattern.compile("biz_vbitrate=(\\d+)").matcher(rawUrl);
         if (bm.find()) bitrate = Long.parseLong(bm.group(1));
+        String lu = rawUrl.toLowerCase();
+        if (lu.contains("volcsecret")) bitrate = -1;            // volcSecret 型黑屏，降到底
+        if (lu.contains("wssecret")) bitrate += 1000000000L;    // wsSecret 型优先
         if (!streamKey.isEmpty()) {
             Object[] prev = streamBest.get(streamKey);
             if (prev != null) {
