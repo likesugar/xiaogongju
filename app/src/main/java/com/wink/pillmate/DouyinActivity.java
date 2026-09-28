@@ -67,57 +67,7 @@ public class DouyinActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
 
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri u = request.getUrl();
-                String s = u.getScheme();
-                if ("http".equals(s) || "https".equals(s)) return false;
-                // snssdk1128://aweme/detail/<id> → 网页版视频页
-                if ("snssdk1128".equals(s) || "snssdk1233".equals(s) || "aweme".equals(s)) {
-                    String path = u.getPath();
-                    Matcher am = Pattern.compile("/detail/(\\d+)").matcher(path == null ? "" : path);
-                    if (am.find()) {
-                        view.loadUrl("https://www.douyin.com/video/" + am.group(1));
-                        return true;
-                    }
-                }
-                return true;   // 其他私有协议忽略
-            }
-
-
-            @Override
-            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                String url = request.getUrl().toString();
-                if (url.contains("/log/")) return null;
-                // 源码规则（直播 flv/m3u8/stream-）+ 视频页扩展（douyinvod mp4/m4s、playwm 直链）
-                String l = url.toLowerCase();
-                boolean hit = l.contains(".flv") || l.contains(".m3u8") || l.contains("stream-")
-                    || l.contains(".mp4") || l.contains(".m4s")
-                    || l.contains("douyinvod") || l.contains("/aweme/v1/play")
-                    || l.contains("playwm");
-                if (hit && foundUrls.add(url)) {
-                    // 画质拉满：ratio=540p/720p/default → 1080p（改写后与原链接都保留）
-                    String hi = url.replaceAll("ratio=[a-zA-Z0-9_]+", "ratio=1080p");
-                    if (hi.equals(url)) {
-                        final String f = url;
-                        main.post(new Runnable() { public void run() { addRecord(f); } });
-                    } else {
-                        final String f = hi;
-                        foundUrls.add(f);
-                        main.post(new Runnable() { public void run() { addRecord(f); } });
-                    }
-                    // HLS 主清单：后台解析 BANDWIDTH 最高的变体流
-                    if (l.contains(".m3u8")) {
-                        final String mu = url;
-                        new Thread(new Runnable() {
-                            public void run() { pickBestVariant(mu); }
-                        }).start();
-                    }
-                }
-                return null;
-            }
-        });
+        webView.setWebViewClient(makeSniffClient());
 
         // 解析：纯数字=抖音房间号，贴文案自动抽链接
         findViewById(R.id.btn_parse).setOnClickListener(new View.OnClickListener() {
@@ -190,8 +140,86 @@ public class DouyinActivity extends Activity {
             }
             if (!url.startsWith("http")) url = "https://" + url;
         }
-        webView.loadUrl(url);
+        ensureDesktopForLive(url);
+        bgLive.loadUrl(url);   // 后台桌面 UA 跑，前台保持不动
         recordsPanel.setVisibility(View.VISIBLE);
+    }
+
+    /** 前台/后台共用的嗅探 client */
+    private WebViewClient makeSniffClient() {
+        return new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri u = request.getUrl();
+                String s = u.getScheme();
+                if ("http".equals(s) || "https".equals(s)) return false;
+                // snssdk1128://aweme/detail/<id> → 网页版视频页
+                if ("snssdk1128".equals(s) || "snssdk1233".equals(s) || "aweme".equals(s)) {
+                    String path = u.getPath();
+                    Matcher am = Pattern.compile("/detail/(\\d+)").matcher(path == null ? "" : path);
+                    if (am.find()) {
+                        view.loadUrl("https://www.douyin.com/video/" + am.group(1));
+                        return true;
+                    }
+                }
+                return true;   // 其他私有协议忽略
+            }
+
+            @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                String url = request.getUrl().toString();
+                if (url.contains("/log/")) return null;
+                String l = url.toLowerCase();
+                boolean hit = l.contains(".flv") || l.contains(".m3u8") || l.contains("stream-")
+                    || l.contains(".mp4") || l.contains(".m4s")
+                    || l.contains("douyinvod") || l.contains("/aweme/v1/play")
+                    || l.contains("playwm");
+                if (hit && foundUrls.add(url)) {
+                    String hi = url.replaceAll("ratio=[a-zA-Z0-9_]+", "ratio=1080p");
+                    if (hi.equals(url)) {
+                        final String f = url;
+                        main.post(new Runnable() { public void run() { addRecord(f); } });
+                    } else {
+                        final String f = hi;
+                        foundUrls.add(f);
+                        main.post(new Runnable() { public void run() { addRecord(f); } });
+                    }
+                    if (l.contains(".m3u8")) {
+                        final String mu = url;
+                        new Thread(new Runnable() {
+                            public void run() { pickBestVariant(mu); }
+                        }).start();
+                    }
+                }
+                return null;
+            }
+        };
+    }
+
+    /** 后台解析：原画只有桌面 UA 给 → 1px 桌面 WebView 负责干活，前台保持不动 */
+    private WebView bgLive = null;
+
+    private void ensureBgLive() {
+        if (bgLive != null) return;
+        bgLive = new WebView(this);
+        WebSettings s = bgLive.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        s.setMediaPlaybackRequiresUserGesture(false);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        s.setUserAgentString(UA_DESKTOP);
+        CookieManager.getInstance().setAcceptCookie(true);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(bgLive, true);
+        bgLive.setWebChromeClient(new WebChromeClient());
+        bgLive.setWebViewClient(makeSniffClient());
+        ((android.view.ViewGroup) findViewById(android.R.id.content))
+            .addView(bgLive, new android.view.ViewGroup.LayoutParams(1, 1));
+    }
+
+    /** 直播/视频解析都走后台桌面 WebView（原画只有桌面 UA 给），前台保持不动 */
+    private void ensureDesktopForLive(String url) {
+        ensureBgLive();
     }
 
     private void reloadCurrent() {
@@ -299,6 +327,15 @@ public class DouyinActivity extends Activity {
         recordList.addView(row, 0);
         if (!streamKey.isEmpty()) streamBest.put(streamKey, new Object[]{bitrate, row});
         recordsPanel.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (bgLive != null) {
+            try { bgLive.destroy(); } catch (Throwable ignored) {}
+            bgLive = null;
+        }
+        super.onDestroy();
     }
 
     // ---------- 沉浸全屏 ----------
