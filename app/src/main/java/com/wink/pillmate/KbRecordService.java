@@ -40,6 +40,7 @@ public class KbRecordService extends Service {
             SnifferActivity.stopKb();
             LiveProxy.stopRefresher();
             stopSelf();
+            PlayerActivity.updateRecNote();
             return START_NOT_STICKY;
         }
         LiveProxy.start();
@@ -48,47 +49,17 @@ public class KbRecordService extends Service {
                 .getString("mediaUrl", null);
         }
         LiveProxy.startRefresher();
-        startForeground(2001, buildNotification("初始化…"));
+        // 与录制总通知同一款（同 id 9100），不再单独显示
+        startForeground(9100, PlayerActivity.buildRecNote(this));
+        PlayerActivity.updateRecNote();
         new Thread(new Runnable() { public void run() {
             while (true) {
-                try {
-                    Thread.sleep(2000);
-                    long age = LiveProxy.latestAt == 0 ? -1 : (System.currentTimeMillis() - LiveProxy.latestAt) / 1000;
-                    String t = "轮询 " + LiveProxy.pollCount + " 次｜失败 " + LiveProxy.failCount
-                        + "｜最新列表 " + (age < 0 ? "无" : age + " 秒前");
-                    updateNotification(t);
-                    if (SnifferActivity.kbState[0] != 1) break;
-                } catch (Throwable e) { break; }
+                try { Thread.sleep(2000); if (SnifferActivity.kbState[0] != 1) break; }
+                catch (Throwable e) { break; }
             }
         } }).start();
         return START_STICKY;
     }
 
-    private void updateNotification(String text) {
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        nm.notify(2001, buildNotification(text));
-    }
 
-    private Notification buildNotification(String text) {
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        NotificationChannel ch = new NotificationChannel(CHANNEL, "直播录制", NotificationManager.IMPORTANCE_LOW);
-        nm.createNotificationChannel(ch);
-        // 点通知本体 = 进入解析页查看
-        android.app.PendingIntent openPi = android.app.PendingIntent.getActivity(this, 2,
-            new Intent(this, PlayerActivity.class)
-                .putExtra("autoUrl", "http://127.0.0.1:" + LiveProxy.PORT + "/playlist.m3u8")
-                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            android.app.PendingIntent.FLAG_IMMUTABLE);
-        Notification.Builder b = new Notification.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("小工具 · 录制中")
-            .setContentText(text + "｜点此进入查看")
-            .setContentIntent(openPi)
-            .setOngoing(true);
-        android.app.PendingIntent pi = android.app.PendingIntent.getService(this, 0,
-            new Intent(this, KbRecordService.class).setAction(ACTION_STOP),
-            android.app.PendingIntent.FLAG_IMMUTABLE);
-        b.addAction(new Notification.Action.Builder(null, "停止", pi).build());
-        return b.build();
-    }
 }

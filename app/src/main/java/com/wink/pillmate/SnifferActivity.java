@@ -38,10 +38,13 @@ public class SnifferActivity extends Activity {
     private boolean launched = false;
     private static boolean mediaLocked = false;
 
+    public static volatile boolean kbPageAlive = false;   // 网页解析页可用（下载页“录制当前”用）
+
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        kbPageAlive = true;
         setContentView(R.layout.activity_sniffer);
 
         // Android 13+ 通知运行时权限（后台录制通知必需）
@@ -72,10 +75,6 @@ public class SnifferActivity extends Activity {
                     Uri u = request.getUrl();
                     if (!"http".equals(u.getScheme()) && !"https".equals(u.getScheme())) return null;
                     String url = u.toString();
-                    if (kbState[0] == 0 && url.toLowerCase().contains(".ts") && url.contains("/stream/")) {
-                        // 自动录制：第一个直播分片出现即开始（边抓边合并进最终文件）
-                        startKb(SnifferActivity.this);
-                    }
                     if (kbState[0] == 1 && kbSeen.add(url) && url.toLowerCase().contains(".ts")) {
                         final long __t0 = System.currentTimeMillis();
                         final java.util.Map<String, String> __hdrs = request.getRequestHeaders();
@@ -197,7 +196,6 @@ public class SnifferActivity extends Activity {
             LiveProxy.fetchLatest(url);
             if (!launched) {
                 launched = true;
-                startKb(this); // 开输出流+前台服务
                 // 竞态修复：等 refresher 抓到第一份播放列表再拉播放器（最多 8s）
                 final android.content.Context ctx = this;
                 new Thread(new Runnable() { public void run() {

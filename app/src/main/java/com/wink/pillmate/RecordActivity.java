@@ -57,6 +57,13 @@ public class RecordActivity extends Activity {
         recNow.setBackgroundColor(0xFF24485E);
         recNow.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
+                // 网页解析页开着 → 抓当前页面分片（KB 模式）
+                if (SnifferActivity.kbPageAlive && SnifferActivity.kbState[0] == 0 && LiveProxy.mediaUrl != null) {
+                    SnifferActivity.startKb(RecordActivity.this);
+                    rebuild();
+                    Toast.makeText(RecordActivity.this, "已开始抓取网页流", Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 String u = PlayerActivity.lastStreamUrl;
                 if (u == null || u.isEmpty() || !u.startsWith("http")) {
                     Toast.makeText(RecordActivity.this, "先在播放器里开播一条直播流", Toast.LENGTH_SHORT).show();
