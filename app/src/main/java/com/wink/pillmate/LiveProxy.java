@@ -195,21 +195,29 @@ public class LiveProxy {
             }
 
             if (path.startsWith("/live.ts")) {
-                // 桥接 TS 流：outPipe 是 FIFO，阻塞式直读即可（不能轮询 length）
+                // 桥接 TS 流：尾随增长的缓存文件流式吐给 VLC
                 try {
                     String f = tsPipe;
                     if (f == null) { writeResp(s, "404 Not Found", "text/plain", "no bridge".getBytes()); return; }
                     OutputStream os = s.getOutputStream();
                     os.write("HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nConnection: close\r\n\r\n".getBytes());
                     os.flush();
-                    java.io.FileInputStream in = new java.io.FileInputStream(f);
+                    java.io.RandomAccessFile raf = new java.io.RandomAccessFile(f, "r");
+                    long pos = 0; long last = System.currentTimeMillis();
                     byte[] rb = new byte[65536];
-                    int rn;
-                    while ((rn = in.read(rb)) > 0) {
-                        os.write(rb, 0, rn);
-                        os.flush();
+                    while (true) {
+                        long len = raf.length();
+                        if (len > pos) {
+                            last = System.currentTimeMillis();
+                            raf.seek(pos);
+                            int rn = raf.read(rb);
+                            if (rn > 0) { os.write(rb, 0, rn); os.flush(); liveTsBytes += rn; pos += rn; }
+                        } else {
+                            if (System.currentTimeMillis() - last > 20000) break;
+                            Thread.sleep(250);
+                        }
                     }
-                    in.close();
+                    raf.close();
                 } catch (Throwable ignored) {}
                 return;
             }
@@ -305,7 +313,14 @@ public class LiveProxy {
 
             if (path.startsWith("/playlist.m3u8")) {
                 byte[] body = latestBody;
+                // 竞态修复：播放器先到就就地等 refresher 抓到第一份列表（最多 10s）
+                for (int i = 0; body == null && i < 20 && mediaUrl != null; i++) {
+                    try { Thread.sleep(500); } catch (Exception ignored) {}
+                    body = latestBody;
+                }
+                if (body == null) body = httpGet(mediaUrl);   // 最后再亲自补抓一次
                 if (body == null) { writeResp(s, "404 Not Found", "text/plain", "no stream".getBytes()); return; }
+                latestBody = body;
                 StringBuilder sb = new StringBuilder();
                 for (String line : new String(body, "UTF-8").split("\n")) {
                     line = line.trim();
