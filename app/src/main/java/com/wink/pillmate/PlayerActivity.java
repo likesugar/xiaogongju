@@ -44,6 +44,10 @@ public class PlayerActivity extends Activity {
 
 
     private ExoPlayer player;
+    private final androidx.media3.datasource.DefaultHttpDataSource.Factory httpFactory =
+        new androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setUserAgent("Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile")
+            .setAllowCrossProtocolRedirects(true);
     private SurfaceView videoSurface;
     private ParcelFileDescriptor pfd;
 
@@ -464,7 +468,8 @@ public class PlayerActivity extends Activity {
 
     private void ensurePlayer() {
         if (player == null) {
-            player = new ExoPlayer.Builder(this).build();
+            player = new ExoPlayer.Builder(this,
+                new androidx.media3.exoplayer.source.DefaultMediaSourceFactory(httpFactory)).build();
             player.addListener(new Player.Listener() {
                 public void onPlaybackStateChanged(int st) {
                     if (st == Player.STATE_BUFFERING) showLoading();
@@ -648,6 +653,14 @@ public class PlayerActivity extends Activity {
         setPlayState("开始播放: " + uri);
         try {
             ensurePlayer();
+            String lu = uri.toString().toLowerCase();
+            java.util.Map<String, String> hd = new java.util.HashMap<>();
+            if (lu.contains("bilibili") || lu.contains("bilivideo")) {
+                hd.put("Referer", "https://www.bilibili.com/");
+            } else if (lu.contains("douyin") || lu.contains("douyincdn")) {
+                hd.put("Referer", "https://live.douyin.com/");
+            }
+            httpFactory.setDefaultRequestProperties(hd);
             player.setMediaItem(MediaItem.fromUri(uri));
             player.prepare();
             player.play();
