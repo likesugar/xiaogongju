@@ -124,12 +124,6 @@ public class ParseActivity extends Activity {
                     etInput.setText(url);
                 }
                 parseDone();   // 页面加载完 → 按钮恢复「解析」
-                if (url != null && url.contains("peanutdl.com")) {
-                    // peanutdl 页面就绪 → 自动填 B站链接并点「获取视频」
-                    view.postDelayed(new Runnable() {
-                        public void run() { injectPeanutFill(); }
-                    }, 1200);
-                }
             }
 
             @Override
@@ -292,6 +286,7 @@ public class ParseActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        s.setMediaPlaybackRequiresUserGesture(false);
         s.setUserAgentString(mobileUA
             ? "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
             : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
@@ -308,7 +303,7 @@ public class ParseActivity extends Activity {
                 if (url != null && url.contains("peanutdl.com")) {
                     view.postDelayed(new Runnable() {
                         public void run() { injectPeanutFill(); }
-                    }, 1200);
+                    }, 300);
                 }
             }
 
@@ -360,7 +355,7 @@ public class ParseActivity extends Activity {
                 if (v == null) return;
                 if (v.contains("filled") || v.contains("ok")) {
                     if (retry == 0) {
-                        main.postDelayed(new Runnable() { public void run() { pollPeanutResult(0); } }, 2500);
+                        main.postDelayed(new Runnable() { public void run() { pollPeanutResult(0); } }, 1500);
                     }
                 } else if (retry < 5) {
                     main.postDelayed(new Runnable() {
@@ -384,10 +379,10 @@ public class ParseActivity extends Activity {
         bgWeb.evaluateJavascript(js, new android.webkit.ValueCallback<String>() {
             public void onReceiveValue(String v) {
                 if (v == null || "null".equals(v) || "[]".equals(v)) {
-                    if (round < 12 && parsing) {
-                        main.postDelayed(new Runnable() { public void run() { pollPeanutResult(round + 1); } }, 2500);
-                    } else if (round >= 12) {
-                        main.post(new Runnable() { public void run() { addRecord("B站", "后台30秒未取到结果"); } });
+                    if (round < 20 && parsing) {
+                        main.postDelayed(new Runnable() { public void run() { pollPeanutResult(round + 1); } }, 1500);
+                    } else if (round >= 20) {
+                        main.post(new Runnable() { public void run() { addRecord("B站", "后台约40秒未取到结果"); } });
                         parseDone();
                     }
                     return;
@@ -409,7 +404,7 @@ public class ParseActivity extends Activity {
                             public void run() { if (bgWeb != null) bgWeb.stopLoading(); }
                         });
                     } else if (round < 12 && parsing) {
-                        main.postDelayed(new Runnable() { public void run() { pollPeanutResult(round + 1); } }, 2500);
+                        main.postDelayed(new Runnable() { public void run() { pollPeanutResult(round + 1); } }, 1500);
                     }
                 } catch (Throwable ignored) {}
             }
