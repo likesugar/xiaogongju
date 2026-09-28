@@ -610,10 +610,11 @@ public class PlayerActivity extends Activity {
         job.id = ++recSeq;
         job.notifId = 9000 + job.id;
         job.url = url;
+        String name;
         try {
             String lu = url.toLowerCase();
             String ext = lu.contains(".flv") ? "flv" : "mp4";
-            String name = "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US).format(new java.util.Date()) + "_" + job.id + "." + ext;
+            name = "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US).format(new java.util.Date()) + "_" + job.id + "." + ext;
             android.content.ContentValues cv = new android.content.ContentValues();
             cv.put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, name);
             cv.put(android.provider.MediaStore.Video.Media.MIME_TYPE, "mp4".equals(ext) ? "video/mp4" : "video/x-flv");
@@ -622,7 +623,7 @@ public class PlayerActivity extends Activity {
                 android.provider.MediaStore.Video.Media.getContentUri("external_primary"), cv);
             if (job.storeUri == null) return;
         } catch (Throwable t) { return; }
-        job.name = job.storeUri.getLastPathSegment();
+        job.name = name;
         startPull(job, false);
     }
 
@@ -717,7 +718,7 @@ public class PlayerActivity extends Activity {
 
     static void convertToMp4(final RecJob job) {
         try {
-            String src = job.storeUri.toString();
+            String src = com.arthenica.ffmpegkit.FFmpegKitConfig.getSafParameterForRead(sCtx, job.storeUri);
             java.io.File tmp = new java.io.File(sCtx.getCacheDir(), "conv_" + System.currentTimeMillis() + ".mp4");
             com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(
                 new String[]{"-y", "-i", src, "-c", "copy", "-movflags", "+faststart", tmp.getAbsolutePath()});

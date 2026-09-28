@@ -221,7 +221,16 @@ public class RecordActivity extends Activity {
     }
 
     private void openDir() {
-        // 系统目录选择器，直接定位到 Movies/录制（不依赖第三方文件管理器支持）
+        // 1) MT 管理器指定入口
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setClassName("bin.mt.plus", "bin.mt.plus.MainLightIcon");
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+            Toast.makeText(this, "进 Movies/录制 目录", Toast.LENGTH_LONG).show();
+            return;
+        } catch (Throwable ignored) {}
+        // 2) 系统目录选择器，直接定位到 Movies/录制
         try {
             android.net.Uri dir = android.net.Uri.parse(
                 "content://com.android.externalstorage.documents/document/primary:Movies/录制");
