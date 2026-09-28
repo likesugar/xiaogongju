@@ -70,6 +70,14 @@ public class SnifferActivity extends Activity {
             }
 
             @Override
+            public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+                super.doUpdateVisitedHistory(url, isReload);
+                if (url != null && !url.startsWith("data:")) {
+                    ((EditText) findViewById(R.id.etSniffUrl)).setText(url);
+                }
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 // 页内换房间也重置嗅探锁，允许锁定新直播间的最高档
                 mediaLocked = false;
