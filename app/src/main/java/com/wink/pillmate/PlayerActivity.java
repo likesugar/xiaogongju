@@ -34,6 +34,10 @@ import android.webkit.WebViewClient;
 /** VLC 播放器：官方 VLC-Android 播放路径 + DKVideoPlayer 风格控制条 */
 public class PlayerActivity extends Activity {
 
+    /** 抖哔面板解析出地址后回传开播 */
+    public interface ParseSink { void onParsed(String url); }
+    public static volatile ParseSink parseSink;
+
     private LibVLC libVLC;
     private MediaPlayer player;
     private VLCVideoLayout videoLayout;
@@ -315,7 +319,23 @@ public class PlayerActivity extends Activity {
             public void onClick(View v) { finish(); }
         });
 
-        // 下载当前流（B站经本地代理带 Referer，直接可下）
+        // 抖哔解析面板：出地址直接开播
+        findViewById(R.id.btnDouchi).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                parseSink = new ParseSink() {
+                    public void onParsed(String url) {
+                        runOnUiThread(new Runnable() {
+                            public void run() {
+                                setPlayState("▶ 抖哔解析: " + url);
+                                play(Uri.parse(url));
+                            }
+                        });
+                    }
+                };
+                startActivity(new Intent(PlayerActivity.this, ParseActivity.class));
+            }
+        });
+
         findViewById(R.id.btnDl).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 try {
@@ -591,6 +611,7 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (parseSink != null) parseSink = null;
         super.onDestroy();
         handler.removeCallbacks(tick);
         handler.removeCallbacks(fadeOut);
