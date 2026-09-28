@@ -339,9 +339,15 @@ public class PlayerActivity extends Activity {
         findViewById(R.id.btnDl).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 try {
-                    String u = currentMediaUrl;
+                    String u = (flvOriginalUrl != null) ? flvOriginalUrl : currentMediaUrl;
                     if (u == null || u.isEmpty() || "-".equals(u) || !u.startsWith("http")) {
                         android.widget.Toast.makeText(PlayerActivity.this, "还没有可下载的流", android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    // 直播 flv → ffmpeg 直播录制到 files/录制
+                    String lu = u.toLowerCase();
+                    if (lu.contains(".flv") || lu.contains("douyincdn")) {
+                        toggleLiveRecord(u);
                         return;
                     }
                     String fname = "pillmate_视频_" + System.currentTimeMillis() / 1000 + ".mp4";
@@ -539,7 +545,92 @@ public class PlayerActivity extends Activity {
     }
 
     /** 硬解开但禁直渲染（官方 HW_ACCELERATION_DECODING 档），治有声无画 */
+    private com.arthenica.ffmpegkit.FFmpegSession flvBridge = null;
+    private int udpPort = 0;
+    private String flvOriginalUrl = null;
+    private com.arthenica.ffmpegkit.FFmpegSession recSession = null;
+    private String recFilePath = null;
+
+    /** 直播录制开关：ffmpeg -c copy 存到 files/录制/ */
+    private void toggleLiveRecord(String url) {
+        if (recSession != null) {
+            try { recSession.cancel(); } catch (Throwable ignored) {}
+            recSession = null;
+            android.widget.Toast.makeText(this, "已停止录制: " + recFilePath, Toast.LENGTH_LONG).show();
+            recFilePath = null;
+            return;
+        }
+        try {
+            java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
+            if (!dir.exists()) dir.mkdirs();
+            String name = "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US)
+                .format(new java.util.Date()) + ".flv";
+            java.io.File out = new java.io.File(dir, name);
+            String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
+            String[] cmd = {"-hide_banner", "-loglevel", "error",
+                "-headers", headers,
+                "-i", url,
+                "-c", "copy",
+                "-y", out.getAbsolutePath()};
+            recFilePath = out.getAbsolutePath();
+            final String fname = name;
+            recSession = com.arthenica.ffmpegkit.FFmpegKit.executeWithArgumentsAsync(cmd,
+                new com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback() {
+                    public void apply(com.arthenica.ffmpegkit.FFmpegSession st) {
+                        recSession = null;
+                    }
+                }, null);
+            android.widget.Toast.makeText(this, "开始录制 → 录制/" + fname + "（再点下载=停止）", Toast.LENGTH_LONG).show();
+        } catch (Throwable t) {
+            android.widget.Toast.makeText(this, "录制失败: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** h265-in-flv VLC 解不动：ffmpeg-kit 转 TS 推本地 UDP，VLC 播 UDP */
+    private void playFlvViaBridge(String url) {
+        stopFlvBridge();
+        flvOriginalUrl = url;
+        udpPort = 16000 + (int) (System.currentTimeMillis() % 20000);
+        String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
+        String[] cmd = {"-hide_banner", "-loglevel", "error",
+            "-headers", headers,
+            "-i", url,
+            "-c", "copy", "-f", "mpegts",
+            "udp://127.0.0.1:" + udpPort + "?pkt_size=1316"};
+        setPlayState("桥接转封装中…");
+        flvBridge = com.arthenica.ffmpegkit.FFmpegKit.executeWithArgumentsAsync(cmd,
+            new com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback() {
+                public void apply(com.arthenica.ffmpegkit.FFmpegSession st) { }
+            }, null);
+        new Thread(new Runnable() {
+            public void run() {
+                try { Thread.sleep(1500); } catch (Exception ignored) {}
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        play(Uri.parse("udp://127.0.0.1:" + udpPort));
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void stopFlvBridge() {
+        if (flvBridge != null) {
+            try { flvBridge.cancel(); } catch (Throwable ignored) {}
+            flvBridge = null;
+        }
+    }
+
     private void play(Uri uri) {
+        // flv（含 h265）→ 桥接成 TS 再播
+        if (!"udp".equals(uri.getScheme()) && !"file".equals(uri.getScheme())
+            && !"content".equals(uri.getScheme())) {
+            String lu = uri.toString().toLowerCase();
+            if (lu.contains(".flv") || lu.contains("douyincdn")) {
+                playFlvViaBridge(uri.toString());
+                return;
+            }
+        }
         currentMediaUrl = uri.toString();
         currentUrl = uri.toString();
         setPlayState("开始播放: " + uri);
@@ -611,7 +702,9 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (parseSink != null) parseSink = null;
+        stopFlvBridge();
+        if (recSession != null) { try { recSession.cancel(); } catch (Throwable ignored) {} recSession = null; }
+        parseSink = null;
         super.onDestroy();
         handler.removeCallbacks(tick);
         handler.removeCallbacks(fadeOut);
