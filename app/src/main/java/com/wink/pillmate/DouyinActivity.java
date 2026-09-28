@@ -141,8 +141,14 @@ public class DouyinActivity extends Activity {
             if (!url.startsWith("http")) url = "https://" + url;
         }
         ensureDesktopForLive(url);
-        bgLive.loadUrl(url);      // 后台桌面 UA：抓原画
-        webView.loadUrl(url);     // 前台自己的 UA：看画面
+        // 二次解析修复：清历史去重 + 重置后台页面状态，避免第二路黑屏
+        foundUrls.clear();
+        bgLive.loadUrl("about:blank");
+        final String furl = url;
+        bgLive.postDelayed(new Runnable() {
+            public void run() { bgLive.loadUrl(furl); }
+        }, 400);
+        webView.loadUrl(url);
         recordsPanel.setVisibility(View.VISIBLE);
     }
 
@@ -217,13 +223,13 @@ public class DouyinActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(bgLive, true);
         bgLive.setWebChromeClient(new WebChromeClient());
         bgLive.setWebViewClient(makeSniffClient());
-        // 后台静音：页面视频不许出声
+        // 后台 WebView 常驻静音（无头不出声，不影响前台浏览）
         final Handler mh = new Handler(Looper.getMainLooper());
         final Runnable muteTask = new Runnable() {
             public void run() {
-                if (bgLive == null) return;
+                if (bgLive == null || isFinishing()) return;
                 bgLive.evaluateJavascript(
-                    "(function(){var m=document.querySelectorAll('video,audio');for(var i=0;i<m.length;i++)m[i].muted=true;})()", null);
+                    "(function(){var m=document.querySelectorAll('video,audio');for(var i=0;i<m.length;i++){try{m[i].muted=true;}catch(e){}}})()", null);
                 mh.postDelayed(this, 1200);
             }
         };
@@ -284,16 +290,13 @@ public class DouyinActivity extends Activity {
         final int id = recordId;
         final String streamUrl = rawUrl;   // 直连最高画质原始流
 
-        // 直播流按 stream-<id> 分组，只留最高分：wsSecret(wsTime) 可播直链优先，volcSecret 型播放黑屏降权
+        // 直播流按 stream-<id> 分组，只留 biz_vbitrate 最高那条
         String streamKey = "";
         long bitrate = -1;
         Matcher km = Pattern.compile("stream-\\d+").matcher(rawUrl);
         if (km.find()) streamKey = km.group();
         Matcher bm = Pattern.compile("biz_vbitrate=(\\d+)").matcher(rawUrl);
         if (bm.find()) bitrate = Long.parseLong(bm.group(1));
-        String lu = rawUrl.toLowerCase();
-        if (lu.contains("volcsecret")) bitrate = -1;            // volcSecret 型黑屏，降到底
-        if (lu.contains("wssecret")) bitrate += 1000000000L;    // wsSecret 型优先
         if (!streamKey.isEmpty()) {
             Object[] prev = streamBest.get(streamKey);
             if (prev != null) {
@@ -317,7 +320,6 @@ public class DouyinActivity extends Activity {
             public void onClick(View v) {
                 ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 cm.setPrimaryClip(android.content.ClipData.newPlainText("流地址", streamUrl));
-                Toast.makeText(DouyinActivity.this, "已复制流地址", Toast.LENGTH_SHORT).show();
             }
         });
         row.addView(tv);
@@ -331,8 +333,8 @@ public class DouyinActivity extends Activity {
         btn.setPadding(28, 12, 28, 12);
         btn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                // 停掉页面播放，把流让给 VLC
-                String pj = "(function(){var m=document.querySelectorAll('video');for(var i=0;i<m.length;i++){try{m[i].pause();m[i].removeAttribute('src');m[i].load();}catch(e){}}})()";
+                // 开播瞬间暂停页面视频，把流让给 VLC
+                String pj = "(function(){var m=document.querySelectorAll('video');for(var i=0;i<m.length;i++){try{m[i].pause();}catch(e){}}})()";
                 webView.loadUrl("javascript:" + pj);
                 if (bgLive != null) bgLive.evaluateJavascript(pj, null);
                 Intent it = new Intent(DouyinActivity.this, PlayerActivity.class);
