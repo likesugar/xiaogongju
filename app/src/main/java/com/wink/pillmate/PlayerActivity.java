@@ -321,6 +321,27 @@ public class PlayerActivity extends Activity {
 
         // 抖哔解析面板：出地址直接开播
         findViewById(R.id.btnDouchi).setOnClickListener(new View.OnClickListener() {
+
+            // 通知栏点击 = 停止录制
+            android.content.BroadcastReceiver stopRec = new android.content.BroadcastReceiver() {
+                public void onReceive(android.content.Context ctx, android.content.Intent i) {
+                    if (recSession != null) {
+                        try { recSession.cancel(); } catch (Throwable ignored) {}
+                        recSession = null;
+                        try {
+                            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                            nm.cancel(9001);
+                        } catch (Throwable ignored) {}
+                        android.widget.Toast.makeText(PlayerActivity.this, "已停止录制: " + recFilePath, Toast.LENGTH_LONG).show();
+                        recFilePath = null;
+                    }
+                }
+            };
+            {
+                android.content.IntentFilter f = new android.content.IntentFilter("pillmate_stop_rec");
+                f.setPriority(100);
+                registerReceiver(stopRec, f);
+            }
             public void onClick(View v) {
                 parseSink = new ParseSink() {
                     public void onParsed(String url) {
@@ -586,8 +607,11 @@ public class PlayerActivity extends Activity {
                 android.app.Notification nt = new android.app.Notification.Builder(this, "rec")
                     .setSmallIcon(android.R.drawable.ic_media_play)
                     .setContentTitle("● 录制中")
-                    .setContentText(fname)
+                    .setContentText(fname + "（点此停止）")
                     .setOngoing(true)
+                    .setContentIntent(android.app.PendingIntent.getBroadcast(this, 0,
+                        new android.content.Intent("pillmate_stop_rec").setPackage(getPackageName()),
+                        android.app.PendingIntent.FLAG_IMMUTABLE))
                     .build();
                 nm.notify(9001, nt);
             } catch (Throwable ignored) {}
@@ -658,15 +682,7 @@ public class PlayerActivity extends Activity {
     }
 
     private void play(Uri uri) {
-        // flv（含 h265）→ 桥接成 TS 再播
-        if (!"udp".equals(uri.getScheme()) && !"file".equals(uri.getScheme())
-            && !"content".equals(uri.getScheme())) {
-            String lu = uri.toString().toLowerCase();
-            if (lu.contains(".flv") || lu.contains("douyincdn")) {
-                playFlvViaBridge(uri.toString());
-                return;
-            }
-        }
+        // 回归 v15.1：直连播放（v15.6+ 的桥接链路实际不可用）
         currentMediaUrl = uri.toString();
         currentUrl = uri.toString();
         setPlayState("开始播放: " + uri);
