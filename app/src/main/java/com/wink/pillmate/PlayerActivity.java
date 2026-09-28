@@ -130,6 +130,22 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // 崩溃日志落盘（crash.log），用于定位自动退出
+        final Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            public void uncaughtException(Thread t, Throwable e) {
+                try {
+                    java.io.FileWriter fw = new java.io.FileWriter(
+                        new java.io.File(getExternalFilesDir(null), "crash.log"), true);
+                    fw.append(new java.text.SimpleDateFormat("MM-dd HH:mm:ss ", java.util.Locale.US)
+                        .format(new java.util.Date())).append(e.toString()).append("\n");
+                    for (StackTraceElement se : e.getStackTrace()) fw.append("  at ").append(se.toString()).append("\n");
+                    if (e.getCause() != null) fw.append("caused: ").append(e.getCause().toString()).append("\n");
+                    fw.close();
+                } catch (Throwable ignored) {}
+                if (prev != null) prev.uncaughtException(t, e);
+            }
+        });
         super.onCreate(savedInstanceState);
         final Thread.UncaughtExceptionHandler def = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
