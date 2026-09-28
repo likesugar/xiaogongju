@@ -720,14 +720,23 @@ public class PlayerActivity extends Activity {
     }
 
     static void convertToMp4(final RecJob job) {
+        convertToMp4(job, false);
+    }
+
+    static void convertToMp4(final RecJob job, final boolean reencode) {
         job.state = "转换MP4中…";
         try {
             String src = job.storeUri != null
                 ? com.arthenica.ffmpegkit.FFmpegKitConfig.getSafParameterForRead(sCtx, job.storeUri)
                 : job.file.getAbsolutePath();
             java.io.File tmp = new java.io.File(sCtx.getCacheDir(), "conv_" + System.currentTimeMillis() + ".mp4");
-            com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(
-                new String[]{"-y", "-i", src, "-c", "copy", "-movflags", "+faststart", tmp.getAbsolutePath()});
+            // KB 抓取流时间戳跳变严重，copy 会被 MP4 截断 → 重编码重生时间戳（保证全长顺滑）
+            String[] args = reencode
+                ? new String[]{"-y", "-fflags", "+genpts", "-i", src,
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", tmp.getAbsolutePath()}
+                : new String[]{"-y", "-i", src, "-c", "copy", "-movflags", "+faststart", tmp.getAbsolutePath()};
+            com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(args);
             if (st.getState().equals(com.arthenica.ffmpegkit.SessionState.COMPLETED) && tmp.length() > 0) {
                 String name = job.name != null ? job.name : "rec.mp4";
                 String mp4Name = (name.endsWith(".flv") ? name.substring(0, name.length() - 4) : name) + ".mp4";
@@ -790,12 +799,12 @@ public class PlayerActivity extends Activity {
         if (job == null) return;
         new Thread(new Runnable() { public void run() {
             try { SnifferActivity.stopKb(); } catch (Throwable ignored) {}
-            // 等待 stopKb 的异步 PTS 重建（fix_tmp.ts）完成，最多 20s，否则转出来只剩几秒
+            // 等待 stopKb 的异步 PTS 重建（fix_tmp.ts）完成，最多 20s
             try {
                 java.io.File fix = new java.io.File(SnifferActivity.kbDir.getParentFile(), "fix_tmp.ts");
                 for (int i = 0; i < 60 && fix.exists(); i++) Thread.sleep(300);
             } catch (Throwable ignored) {}
-            convertToMp4(job);
+            convertToMp4(job, true);   // KB 流必须重编码
             if (kbJob == job) kbJob = null;
         }}).start();
     }
