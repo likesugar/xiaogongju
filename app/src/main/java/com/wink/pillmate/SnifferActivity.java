@@ -38,6 +38,7 @@ public class SnifferActivity extends Activity {
     private static final String[] kbStream = {""};
     private boolean launched = false;
     private static boolean mediaLocked = false;
+    private static String lastMaster = "";
 
     public static volatile boolean kbPageAlive = false;   // 网页解析页可用（下载页“录制当前”用）
 
@@ -216,8 +217,10 @@ public class SnifferActivity extends Activity {
         String lu = url.toLowerCase();
         if (lu.contains(".ts")) return; // 分片不处理（刷新器自己抓）
         if (lu.contains("/stream/") && lu.contains("playlist") && !lu.contains("master")) {
-            if (mediaLocked) return; // 已锁定最高档，后台 ABR 降档不跟随
-            mediaLocked = true;      // master 已被强制 targets=90，首个列表即最高档
+            // 同 URL 判重（防 ABR 重复请求）；页内换房间 URL 不同 → 自动跟随新房间
+            if (lu.equals(lastMaster)) return;
+            lastMaster = lu;
+            mediaLocked = true;
             // 媒体列表地址交给独立刷新器（服务自己轮询，页面可退）
             LiveProxy.mediaUrl = url;
             getSharedPreferences("settings", MODE_PRIVATE).edit().putString("mediaUrl", url).apply();
