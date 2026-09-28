@@ -155,7 +155,7 @@ public class RecordActivity extends Activity {
         long size = j.bytes;
         String info = "录制时长: " + fmtDur(secs)
             + "\n录制大小: " + fmtSize(size)
-            + "\n录制状态: " + (live ? "录制中" : "暂停录制");
+            + "\n录制状态: " + (live ? "录制中" : (j.state != null ? j.state : "暂停录制"));
         TextView tvInfo = new TextView(this);
         tvInfo.setText(info);
         tvInfo.setTextColor(0xFF8A919E);
@@ -193,7 +193,6 @@ public class RecordActivity extends Activity {
         pm.getMenu().add("结束录制(转MP4)").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
             public boolean onMenuItemClick(android.view.MenuItem it) {
                 PlayerActivity.recFinish(j.id);
-                Toast.makeText(RecordActivity.this, "正在合并转MP4…", Toast.LENGTH_SHORT).show();
                 rebuild();
                 return true;
             }
@@ -221,13 +220,15 @@ public class RecordActivity extends Activity {
     }
 
     private void openDir() {
-        // 1) MT 管理器指定入口
+        // 1) MT 管理器指定入口，带目标目录
         try {
             Intent i = new Intent(Intent.ACTION_VIEW);
             i.setClassName("bin.mt.plus", "bin.mt.plus.MainLightIcon");
+            i.setData(android.net.Uri.parse("file:///storage/emulated/0/Movies/录制"));
+            i.putExtra("path", "/storage/emulated/0/Movies/录制");
+            i.putExtra("com.bin.mt.plus.path", "/storage/emulated/0/Movies/录制");
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(i);
-            Toast.makeText(this, "进 Movies/录制 目录", Toast.LENGTH_LONG).show();
             return;
         } catch (Throwable ignored) {}
         // 2) 系统目录选择器，直接定位到 Movies/录制

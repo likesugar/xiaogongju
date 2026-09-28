@@ -567,6 +567,7 @@ public class PlayerActivity extends Activity {
         android.net.Uri storeUri;
         volatile long bytes = 0;
         volatile boolean finishNow = false;
+        volatile String state = null;   // null=暂停录制 / 转换MP4中 / 转换失败
         int notifId;
         volatile long secs = 0;
         volatile long startTs = 0;
@@ -675,8 +676,10 @@ public class PlayerActivity extends Activity {
                         sCtx.getContentResolver().update(job.storeUri, cv, null, null);
                     } catch (Throwable ignored) {}
                     if (job.finishNow) {
+                        stoppedJobs.put(job.id, job);
                         convertToMp4(job);
                     } else {
+                        job.state = null;
                         stoppedJobs.put(job.id, job);   // 暂停/断流：可继续
                     }
                 }
@@ -717,6 +720,7 @@ public class PlayerActivity extends Activity {
     }
 
     static void convertToMp4(final RecJob job) {
+        job.state = "转换MP4中…";
         try {
             String src = com.arthenica.ffmpegkit.FFmpegKitConfig.getSafParameterForRead(sCtx, job.storeUri);
             java.io.File tmp = new java.io.File(sCtx.getCacheDir(), "conv_" + System.currentTimeMillis() + ".mp4");
@@ -739,8 +743,9 @@ public class PlayerActivity extends Activity {
                 try { sCtx.getContentResolver().delete(job.storeUri, null, null); } catch (Throwable ignored) {}
             }
             tmp.delete();
+            stoppedJobs.remove(job.id);   // 成功：从列表移除
         } catch (Throwable t) {
-            try { stoppedJobs.put(job.id, job); } catch (Throwable ignored) {}
+            job.state = "转换失败(保留flv)";
         }
     }
 
