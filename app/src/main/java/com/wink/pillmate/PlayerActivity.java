@@ -527,88 +527,114 @@ public class PlayerActivity extends Activity {
 
 
 
-    // ---------- 直播录制（纯 Java 拉流写文件） ----------
-    private static volatile java.net.HttpURLConnection recConn = null;
-    private static volatile Thread recThread = null;
-    private static volatile boolean recActive = false;
-    private static volatile String recName = null;
+    // ---------- 直播录制（纯 Java 拉流写文件，支持多路并行） ----------
+    private static class RecJob {
+        volatile boolean active = true;
+        volatile java.net.HttpURLConnection conn;
+        Thread thread;
+        String name;
+        java.io.File file;
+        int notifId;
+    }
+    private static final java.util.concurrent.ConcurrentHashMap<Integer, RecJob> recJobs =
+        new java.util.concurrent.ConcurrentHashMap<>();
+    private static volatile int recSeq = 0;
     private static android.os.PowerManager.WakeLock recWake = null;
 
+    private void acquireWake() {
+        try {
+            if (recWake == null) {
+                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(android.content.Context.POWER_SERVICE);
+                recWake = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "pillmate:rec");
+                recWake.acquire(4 * 3600 * 1000L);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void releaseWakeIfIdle() {
+        try {
+            if (recJobs.isEmpty() && recWake != null) { recWake.release(); recWake = null; }
+        } catch (Throwable ignored) {}
+    }
+
     private void toggleRec() {
-        if (recActive) { stopRec(); return; }
         String u = currentMediaUrl;
         if (u == null || u.isEmpty() || "-".equals(u) || !u.startsWith("http")) {
             Toast.makeText(this, "还没有可下载的流", Toast.LENGTH_SHORT).show();
             return;
         }
-        String lu = u.toLowerCase();
-        final String ref = lu.contains("bilibili") ? "https://www.bilibili.com/" : "https://live.douyin.com/";
-        final String url = u;
-        recActive = true;
-        recThread = new Thread(new Runnable() {
+        startRecJob(u);
+    }
+
+    private void startRecJob(final String url) {
+        final RecJob job = new RecJob();
+        final int jid = ++recSeq;
+        job.notifId = 9000 + jid;
+        recJobs.put(jid, job);
+        acquireWake();
+        final String lu = url.toLowerCase();
+        new Thread(new Runnable() {
             public void run() {
-                java.io.File out = null;
                 java.io.FileOutputStream fo = null;
                 try {
                     java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
                     if (!dir.exists()) dir.mkdirs();
                     String ext = lu.contains(".flv") ? "flv" : "mp4";
-                    out = new java.io.File(dir, "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US)
-                        .format(new java.util.Date()) + "." + ext);
-                    recName = out.getName();
-                    showRecNote(true, recName);
-                    try {
-                        android.os.PowerManager pm = (android.os.PowerManager) getSystemService(android.content.Context.POWER_SERVICE);
-                        recWake = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "pillmate:rec");
-                        recWake.acquire(4 * 3600 * 1000L);
-                    } catch (Throwable ignored) {}
+                    job.file = new java.io.File(dir, "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US)
+                        .format(new java.util.Date()) + "_" + jid + "." + ext);
+                    job.name = job.file.getName();
+                    showRecNote(job.notifId, "● 录制中 " + jid, job.name + "（点此停止）", jid);
                     android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_LESS_FAVORABLE);
                     java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-                    recConn = c;
+                    job.conn = c;
                     c.setConnectTimeout(10000);
                     c.setReadTimeout(15000);
+                    String ref = lu.contains("bilibili") ? "https://www.bilibili.com/" : "https://live.douyin.com/";
                     c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile");
                     c.setRequestProperty("Referer", ref);
                     if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
                     java.io.InputStream in = c.getInputStream();
-                    fo = new java.io.FileOutputStream(out);
+                    fo = new java.io.FileOutputStream(job.file);
                     byte[] b = new byte[32768];
                     long total = 0;
                     int n;
-                    while ((n = in.read(b)) > 0 && recActive) {
+                    while ((n = in.read(b)) > 0 && job.active) {
                         fo.write(b, 0, n);
                         total += n;
                     }
-                    fo.close(); in.close(); c.disconnect();
+                    fo.close(); in.close();
+                    try { c.disconnect(); } catch (Throwable ignored) {}
                     final long sz = total;
+                    final String fname = job.name;
                     runOnUiThread(new Runnable() {
                         public void run() {
-                            Toast.makeText(PlayerActivity.this, "录制结束: " + recName + " " + (sz / 1024) + "KB", Toast.LENGTH_LONG).show();
+                            Toast.makeText(PlayerActivity.this, "录制结束: " + fname + " " + (sz / 1024) + "KB", Toast.LENGTH_LONG).show();
                         }
                     });
                 } catch (Throwable t) {
                     try { if (fo != null) fo.close(); } catch (Exception ignored) {}
-                    try { if (recConn != null) recConn.disconnect(); } catch (Exception ignored) {}
+                    try { if (job.conn != null) job.conn.disconnect(); } catch (Exception ignored) {}
                     final String msg = t.getMessage();
                     runOnUiThread(new Runnable() {
                         public void run() {
-                            Toast.makeText(PlayerActivity.this, "录制中断: " + msg, Toast.LENGTH_LONG).show();
+                            Toast.makeText(PlayerActivity.this, "录制中断(" + jid + "): " + msg, Toast.LENGTH_LONG).show();
                         }
                     });
                 } finally {
-                    recActive = false; recConn = null; recThread = null;
-                    showRecNote(false, null);
-                    try { if (recWake != null) { recWake.release(); recWake = null; } } catch (Throwable ignored) {}
-                    // 转封装 flv→mp4（-c copy 秒级完成），获得可拖动快进的文件
-                    if (out != null && out.length() > 0 && out.getName().endsWith(".flv")) {
+                    job.active = false;
+                    recJobs.remove(jid);
+                    try { nmCancel(job.notifId); } catch (Throwable ignored) {}
+                    releaseWakeIfIdle();
+                    // 转封装 flv→mp4（-c copy 秒级），获得可拖动快进的文件
+                    if (job.file != null && job.file.length() > 0 && job.file.getName().endsWith(".flv")) {
                         try {
-                            String mp4 = out.getAbsolutePath().replace(".flv", ".mp4");
+                            String mp4 = job.file.getAbsolutePath().replace(".flv", ".mp4");
                             com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(
-                                new String[]{"-y", "-i", out.getAbsolutePath(), "-c", "copy",
+                                new String[]{"-y", "-i", job.file.getAbsolutePath(), "-c", "copy",
                                     "-movflags", "+faststart", mp4});
                             if (st.getState().equals(com.arthenica.ffmpegkit.SessionState.COMPLETED)
                                 && new java.io.File(mp4).length() > 0) {
-                                out.delete();
+                                job.file.delete();
                                 final String msg = mp4.substring(mp4.lastIndexOf('/') + 1);
                                 runOnUiThread(new Runnable() {
                                     public void run() {
@@ -620,44 +646,52 @@ public class PlayerActivity extends Activity {
                     }
                 }
             }
-        });
-        recThread.start();
-        Toast.makeText(this, "开始录制（通知栏可点停止）", Toast.LENGTH_SHORT).show();
+        }).start();
+        Toast.makeText(this, "开始第 " + jid + " 路录制（通知栏可点停止）", Toast.LENGTH_SHORT).show();
     }
 
-    private void stopRec() {
-        recActive = false;
-        try { if (recConn != null) recConn.disconnect(); } catch (Throwable ignored) {}
-        try { if (recThread != null) recThread.interrupt(); } catch (Throwable ignored) {}
-        Toast.makeText(this, "已停止录制", Toast.LENGTH_SHORT).show();
+    private void stopJob(int jid) {
+        RecJob job = recJobs.get(jid);
+        if (job != null) {
+            job.active = false;
+            try { if (job.conn != null) job.conn.disconnect(); } catch (Throwable ignored) {}
+            try { if (job.thread != null) job.thread.interrupt(); } catch (Throwable ignored) {}
+        }
     }
 
-    private void showRecNote(boolean on, String name) {
+    private void stopAllRec() {
+        for (Integer id : recJobs.keySet().toArray(new Integer[0])) stopJob(id);
+    }
+
+    private void nmCancel(int id) {
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            nm.cancel(id);
+        } catch (Throwable ignored) {}
+    }
+
+    private void showRecNote(int id, String title, String text, int jid) {
         try {
             android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             android.app.NotificationChannel ch = new android.app.NotificationChannel("rec", "直播录制", android.app.NotificationManager.IMPORTANCE_LOW);
             nm.createNotificationChannel(ch);
-            if (on) {
-                android.app.Notification nt = new android.app.Notification.Builder(this, "rec")
-                    .setSmallIcon(android.R.drawable.ic_media_play)
-                    .setContentTitle("● 录制中")
-                    .setContentText(name + "（点此停止）")
-                    .setOngoing(true)
-                    .setContentIntent(android.app.PendingIntent.getBroadcast(this, 0,
-                        new android.content.Intent("pillmate_stop_rec").setPackage(getPackageName()),
-                        android.app.PendingIntent.FLAG_IMMUTABLE))
-                    .build();
-                nm.notify(9001, nt);
-            } else {
-                nm.cancel(9001);
-            }
+            android.app.Notification nt = new android.app.Notification.Builder(this, "rec")
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setOngoing(true)
+                .setContentIntent(android.app.PendingIntent.getBroadcast(this, jid,
+                    new android.content.Intent("pillmate_stop_rec").setPackage(getPackageName()).putExtra("jid", jid),
+                    android.app.PendingIntent.FLAG_IMMUTABLE))
+                .build();
+            nm.notify(id, nt);
         } catch (Throwable ignored) {}
     }
 
     private android.content.BroadcastReceiver stopRecReceiver = new android.content.BroadcastReceiver() {
         public void onReceive(android.content.Context ctx, android.content.Intent i) {
-            if (recActive) { recActive = false;
-                try { if (recConn != null) recConn.disconnect(); } catch (Throwable ignored) {} }
+            int jid = i.getIntExtra("jid", -1);
+            if (jid > 0) stopJob(jid);
         }
     };
 
@@ -669,6 +703,7 @@ public class PlayerActivity extends Activity {
         try {
             ensurePlayer();
             player.stop();
+            try { if (player.getVLCVout().areViewsAttached()) player.detachViews(); } catch (Throwable ignored) {}
             Media m;
             String scheme = uri.getScheme();
             if ("content".equals(scheme) || "file".equals(scheme)) {
@@ -685,6 +720,16 @@ public class PlayerActivity extends Activity {
             m.release();
             setPlayState("已装载媒体，启动播放…");
             player.play();
+            // 延迟重挂视频输出（立即挂会与新 Surface 竞争导致黑屏）
+            handler.postDelayed(new Runnable() {
+                public void run() {
+                    try {
+                        if (!player.getVLCVout().areViewsAttached()) {
+                            player.attachViews(videoLayout, null, true, false);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            }, 300);
             showController();
         } catch (Throwable t) {
             showError("播放失败", t);
@@ -703,7 +748,7 @@ public class PlayerActivity extends Activity {
     protected void onStop() {
         super.onStop();
         // 默认退到后台就暂停；开了后台播放模式则继续出声
-        if (!backgroundMode && !recActive && player != null) {
+        if (!backgroundMode && recJobs.isEmpty() && player != null) {
             try { player.pause(); } catch (Throwable ignored) {}
         }
     }
@@ -744,8 +789,7 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        recActive = false;
-        try { if (recConn != null) recConn.disconnect(); } catch (Throwable ignored) {}
+        stopAllRec();
         try { unregisterReceiver(stopRecReceiver); } catch (Throwable ignored) {}
         parseSink = null;
         super.onDestroy();
