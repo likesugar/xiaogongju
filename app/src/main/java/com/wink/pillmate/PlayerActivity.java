@@ -790,6 +790,11 @@ public class PlayerActivity extends Activity {
         if (job == null) return;
         new Thread(new Runnable() { public void run() {
             try { SnifferActivity.stopKb(); } catch (Throwable ignored) {}
+            // 等待 stopKb 的异步 PTS 重建（fix_tmp.ts）完成，最多 20s，否则转出来只剩几秒
+            try {
+                java.io.File fix = new java.io.File(SnifferActivity.kbDir.getParentFile(), "fix_tmp.ts");
+                for (int i = 0; i < 60 && fix.exists(); i++) Thread.sleep(300);
+            } catch (Throwable ignored) {}
             convertToMp4(job);
             if (kbJob == job) kbJob = null;
         }}).start();

@@ -34,7 +34,7 @@ public class SnifferActivity extends Activity {
     private static final java.util.LinkedHashSet<String> kbSeen = new java.util.LinkedHashSet<>();
     private static java.io.FileOutputStream kbOut = null;
     private static String kbOutName = "";
-    private static java.io.File kbDir;
+    static java.io.File kbDir;
     private static final String[] kbStream = {""};
     private boolean launched = false;
     private static boolean mediaLocked = false;
