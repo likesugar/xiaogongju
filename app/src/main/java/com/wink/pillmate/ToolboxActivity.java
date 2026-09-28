@@ -98,6 +98,20 @@ public class ToolboxActivity extends Activity {
         tvNext = findViewById(R.id.tvNextDose);
 
 
+        // 全局崩溃日志 → Movies/录制/crash.txt（公共目录可直接查看）
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            public void uncaughtException(Thread t, Throwable e) {
+                try {
+                    java.io.File dir = new java.io.File(
+                        android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MOVIES), "录制");
+                    if (!dir.exists()) dir.mkdirs();
+                    java.io.PrintWriter pw = new java.io.PrintWriter(new java.io.FileWriter(new java.io.File(dir, "crash.txt"), true));
+                    pw.println("==== " + new java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(new java.util.Date()) + " ====\n");
+                    e.printStackTrace(pw);
+                    pw.close();
+                } catch (Throwable ignored) {}
+            }
+        });
         if (Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != 0) {
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);
