@@ -682,19 +682,21 @@ public class PlayerActivity extends Activity {
             new Thread(new Runnable() {
                 public void run() {
                     flvBridge = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(cmd);
+                    // 会话结束后把日志落盘，供诊断
+                    try {
+                        java.io.File lg = new java.io.File(getExternalFilesDir(null), "bridge.log");
+                        java.io.FileWriter fw = new java.io.FileWriter(lg);
+                        fw.write(flvBridge.getAllLogsAsString());
+                        fw.close();
+                    } catch (Throwable ignored) {}
                 }
             }).start();
             new Thread(new Runnable() {
                 public void run() {
-                    try { Thread.sleep(2500); } catch (Exception ignored) {}
+                    try { Thread.sleep(2000); } catch (Exception ignored) {}
                     runOnUiThread(new Runnable() {
                         public void run() {
-                            if (LiveProxy.liveTsBytes == 0 && flvBridge != null) {
-                                String lg = flvBridge.getAllLogsAsString();
-                                setPlayState("桥接无数据: " + (lg.length() > 200 ? lg.substring(lg.length() - 200) : lg));
-                            } else {
-                                play(Uri.parse("http://127.0.0.1:8123/live.ts"));
-                            }
+                            play(Uri.parse("http://127.0.0.1:8123/live.ts"));
                         }
                     });
                 }
