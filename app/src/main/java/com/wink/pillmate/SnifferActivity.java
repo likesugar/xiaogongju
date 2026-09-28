@@ -216,6 +216,8 @@ public class SnifferActivity extends Activity {
 
     private void load(String url) {
         if (url.isEmpty()) return;
+        // 换房间：重置嗅探锁，允许重新锁定新直播间的最高档
+        mediaLocked = false;
         if (!url.startsWith("http")) url = "https://" + url;
         Toast.makeText(this, "正在打开页面并嗅探…", Toast.LENGTH_SHORT).show();
         webView.loadUrl(url);
