@@ -3,6 +3,7 @@ package com.wink.pillmate;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ClipboardManager;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -396,7 +397,6 @@ public class ParseActivity extends Activity {
             public void onClick(View v) {
                 ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 cm.setPrimaryClip(android.content.ClipData.newPlainText("流地址", streamUrl));
-                Toast.makeText(ParseActivity.this, "已复制流地址", Toast.LENGTH_SHORT).show();
             }
         });
         row.addView(tvUrl2);
@@ -452,11 +452,10 @@ public class ParseActivity extends Activity {
             bgWeb.evaluateJavascript(
                 "(function(){var m=document.querySelectorAll('video');for(var i=0;i<m.length;i++){try{m[i].pause();m[i].removeAttribute('src');m[i].load();}catch(e){}}})()", null);
         }
-        if (PlayerActivity.parseSink != null) {
-            PlayerActivity.parseSink.onParsed(streamUrl);
-        } else {
-            Toast.makeText(this, "播放器未就绪", Toast.LENGTH_SHORT).show();
-        }
+        // 每次新开播放器实例（15.1 验证过的模式，规避换流黑屏）
+        Intent it = new Intent(this, PlayerActivity.class);
+        it.putExtra("autoUrl", streamUrl);
+        startActivity(it);
     }
 
     @Override

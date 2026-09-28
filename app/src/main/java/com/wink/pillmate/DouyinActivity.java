@@ -314,7 +314,6 @@ public class DouyinActivity extends Activity {
             public void onClick(View v) {
                 ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 cm.setPrimaryClip(android.content.ClipData.newPlainText("流地址", streamUrl));
-                Toast.makeText(DouyinActivity.this, "已复制流地址", Toast.LENGTH_SHORT).show();
             }
         });
         row.addView(tv);
@@ -328,12 +327,10 @@ public class DouyinActivity extends Activity {
         btn.setPadding(28, 12, 28, 12);
         btn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                // 开播瞬间三连击压制页面视频（让 VLC 抢到会话），3 秒后放开页面正常浏览
-                String pj = "(function(){var m=document.querySelectorAll('video');for(var i=0;i<m.length;i++){try{m[i].pause();m[i].removeAttribute('src');m[i].load();}catch(e){}}})()";
-                for (int d = 0; d < 3; d++) {
-                    webView.postDelayed(() -> webView.loadUrl("javascript:" + pj), d * 900L);
-                    if (bgLive != null) bgLive.postDelayed(() -> bgLive.evaluateJavascript(pj, null), d * 900L);
-                }
+                // 开播瞬间暂停页面视频，把流让给 VLC
+                String pj = "(function(){var m=document.querySelectorAll('video');for(var i=0;i<m.length;i++){try{m[i].pause();}catch(e){}}})()";
+                webView.loadUrl("javascript:" + pj);
+                if (bgLive != null) bgLive.evaluateJavascript(pj, null);
                 Intent it = new Intent(DouyinActivity.this, PlayerActivity.class);
                 it.putExtra("autoUrl", streamUrl);
                 startActivity(it);

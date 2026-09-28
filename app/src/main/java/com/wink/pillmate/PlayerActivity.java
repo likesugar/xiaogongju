@@ -319,7 +319,10 @@ public class PlayerActivity extends Activity {
             public void onClick(View v) { finish(); }
         });
 
-        registerReceiver(stopRecReceiver, new android.content.IntentFilter("pillmate_stop_rec"));
+        if (!recRxRegistered) {
+            recRxRegistered = true;
+            getApplicationContext().registerReceiver(stopRecReceiver, new android.content.IntentFilter("pillmate_stop_rec"));
+        }
 
         // 抖哔解析面板：出地址直接开播
         findViewById(R.id.btnDouchi).setOnClickListener(new View.OnClickListener() {
@@ -560,7 +563,7 @@ public class PlayerActivity extends Activity {
     private void toggleRec() {
         String u = currentMediaUrl;
         if (u == null || u.isEmpty() || "-".equals(u) || !u.startsWith("http")) {
-            Toast.makeText(this, "还没有可下载的流", Toast.LENGTH_SHORT).show();
+            
             return;
         }
         startRecJob(u);
@@ -577,7 +580,7 @@ public class PlayerActivity extends Activity {
             public void run() {
                 java.io.FileOutputStream fo = null;
                 try {
-                    java.io.File dir = new java.io.File(getExternalFilesDir(null), "录制");
+                    java.io.File dir = new java.io.File(getApplicationContext().getExternalFilesDir(null), "录制");
                     if (!dir.exists()) dir.mkdirs();
                     String ext = lu.contains(".flv") ? "flv" : "mp4";
                     job.file = new java.io.File(dir, "录制_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US)
@@ -606,20 +609,10 @@ public class PlayerActivity extends Activity {
                     try { c.disconnect(); } catch (Throwable ignored) {}
                     final long sz = total;
                     final String fname = job.name;
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            Toast.makeText(PlayerActivity.this, "录制结束: " + fname + " " + (sz / 1024) + "KB", Toast.LENGTH_LONG).show();
-                        }
-                    });
                 } catch (Throwable t) {
                     try { if (fo != null) fo.close(); } catch (Exception ignored) {}
                     try { if (job.conn != null) job.conn.disconnect(); } catch (Exception ignored) {}
                     final String msg = t.getMessage();
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            Toast.makeText(PlayerActivity.this, "录制中断(" + jid + "): " + msg, Toast.LENGTH_LONG).show();
-                        }
-                    });
                 } finally {
                     job.active = false;
                     recJobs.remove(jid);
@@ -635,19 +628,13 @@ public class PlayerActivity extends Activity {
                             if (st.getState().equals(com.arthenica.ffmpegkit.SessionState.COMPLETED)
                                 && new java.io.File(mp4).length() > 0) {
                                 job.file.delete();
-                                final String msg = mp4.substring(mp4.lastIndexOf('/') + 1);
-                                runOnUiThread(new Runnable() {
-                                    public void run() {
-                                        Toast.makeText(PlayerActivity.this, "已转存 mp4: " + msg, Toast.LENGTH_LONG).show();
-                                    }
-                                });
                             }
                         } catch (Throwable ignored) {}
                     }
                 }
             }
         }).start();
-        Toast.makeText(this, "开始第 " + jid + " 路录制（通知栏可点停止）", Toast.LENGTH_SHORT).show();
+        
     }
 
     private void stopJob(int jid) {
@@ -688,6 +675,7 @@ public class PlayerActivity extends Activity {
         } catch (Throwable ignored) {}
     }
 
+    private static boolean recRxRegistered = false;
     private android.content.BroadcastReceiver stopRecReceiver = new android.content.BroadcastReceiver() {
         public void onReceive(android.content.Context ctx, android.content.Intent i) {
             int jid = i.getIntExtra("jid", -1);
@@ -737,11 +725,7 @@ public class PlayerActivity extends Activity {
     }
 
     private void showMsg(final String msg) {
-        runOnUiThread(new Runnable() {
-            public void run() {
-                Toast.makeText(PlayerActivity.this, msg, Toast.LENGTH_SHORT).show();
-            }
-        });
+        setPlayState(msg);
     }
 
     @Override
@@ -789,9 +773,7 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        stopAllRec();
-        try { unregisterReceiver(stopRecReceiver); } catch (Throwable ignored) {}
-        parseSink = null;
+        parseSink = null;   // 录制任务继续在后台跑，通知栏可停
         super.onDestroy();
         handler.removeCallbacks(tick);
         handler.removeCallbacks(fadeOut);
