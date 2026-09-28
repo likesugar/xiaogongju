@@ -96,7 +96,7 @@ public class ToolboxActivity extends Activity {
         });
         findViewById(R.id.cardParse).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                startActivity(new Intent(ToolboxActivity.this, ParseActivity.class));
+                startActivity(new Intent(ToolboxActivity.this, DouyinActivity.class));
             }
         });
 

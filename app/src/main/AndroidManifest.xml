@@ -43,6 +43,8 @@
         <activity android:name=".ParseActivity" android:exported="false"
             android:theme="@style/ParseDialog"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"/>
+        <activity android:name=".DouyinActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"/>
 
         <receiver android:name=".ReminderReceiver" android:exported="false"/>
         <receiver android:name=".BootReceiver" android:exported="false">
