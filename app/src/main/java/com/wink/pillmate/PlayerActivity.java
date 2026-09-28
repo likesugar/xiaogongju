@@ -678,7 +678,7 @@ public class PlayerActivity extends Activity {
             LiveProxy.tsPipe = bridgeOut;
             bridgePulling = true;
             String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
-            String[] cmd = {"-hide_banner", "-loglevel", "error",
+            String[] cmd = {"-y", "-hide_banner", "-loglevel", "error",
                 "-analyzeduration", "10M", "-probesize", "10M",
                 "-f", "flv", "-i", bridgeIn,
                 "-c", "copy", "-f", "mpegts", bridgeOut};
