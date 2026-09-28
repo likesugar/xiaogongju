@@ -227,7 +227,7 @@ public class RecordActivity extends Activity {
         try {
             Intent i = new Intent(Intent.ACTION_VIEW);
             i.setDataAndType(dir, "resource/folder");
-            i.setPackage("com.bin.mt.plus");
+            i.setPackage("bin.mt.plus");
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(i);
             return;
@@ -242,7 +242,7 @@ public class RecordActivity extends Activity {
         } catch (Throwable ignored) {}
         // 3) 拉起 MT 主界面
         try {
-            Intent i = getPackageManager().getLaunchIntentForPackage("com.bin.mt.plus");
+            Intent i = getPackageManager().getLaunchIntentForPackage("bin.mt.plus");
             if (i != null) { startActivity(i); Toast.makeText(this, "进 Movies/录制 目录", Toast.LENGTH_LONG).show(); return; }
         } catch (Throwable ignored) {}
         Toast.makeText(this, "请到 Movies/录制 目录查看", Toast.LENGTH_LONG).show();
