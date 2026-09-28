@@ -640,7 +640,6 @@ public class PlayerActivity extends Activity {
                 java.io.FileOutputStream fo = null;
                 boolean ended = false;
                 try {
-                    showRecNote(job.notifId, "● 录制中 " + job.id, job.name + "（点击回到播放器）");
                     java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(job.url).openConnection();
                     job.conn = c;
                     c.setConnectTimeout(10000);
@@ -668,7 +667,6 @@ public class PlayerActivity extends Activity {
                     job.startTs = 0;
                     job.active = false;
                     recJobs.remove(job.id);
-                    cancelRecNote(job.notifId);
                     releaseWakeIfIdle();
                     try {   // 收尾：解除 pending，让系统文件管理器可见
                         android.content.ContentValues cv = new android.content.ContentValues();
