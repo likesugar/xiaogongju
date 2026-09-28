@@ -663,37 +663,67 @@ public class PlayerActivity extends Activity {
     };
 
 
-    // ---------- h265-flv 桥接：ffmpeg 转封装 TS，/live.ts 流式播放 ----------
-    private java.io.File bridgeFile = null;
+    // ---------- h265-flv 桥接：Java 拉流写 inPipe，ffmpeg 本地转封装 TS，/live.ts 播放 ----------
+    private String bridgeIn = null;
+    private String bridgeOut = null;
     private com.arthenica.ffmpegkit.FFmpegSession flvBridge = null;
+    private volatile boolean bridgePulling = false;
+    private java.net.HttpURLConnection bridgeConn = null;
 
-    private void playFlvViaBridge(String url) {
+    private void playFlvViaBridge(final String url) {
         stopFlvBridge();
         try {
-            bridgeFile = new java.io.File(getCacheDir(), "bridge_" + System.currentTimeMillis() + ".ts");
-            LiveProxy.tsPipe = bridgeFile.getAbsolutePath();
-            LiveProxy.liveTsBytes = 0;
+            bridgeIn = com.arthenica.ffmpegkit.FFmpegKitConfig.registerNewFFmpegPipe(this);
+            bridgeOut = com.arthenica.ffmpegkit.FFmpegKitConfig.registerNewFFmpegPipe(this);
+            LiveProxy.tsPipe = bridgeOut;
+            bridgePulling = true;
             String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
             String[] cmd = {"-hide_banner", "-loglevel", "error",
-                "-headers", headers,
-                "-i", url,
-                "-c", "copy", "-f", "mpegts", bridgeFile.getAbsolutePath()};
+                "-analyzeduration", "10M", "-probesize", "10M",
+                "-f", "flv", "-i", bridgeIn,
+                "-c", "copy", "-f", "mpegts", bridgeOut};
             setPlayState("桥接转封装中…");
+            // Java 拉流（https 由 Java 处理）写入 inPipe
+            new Thread(new Runnable() {
+                public void run() {
+                    java.io.FileOutputStream po = null;
+                    try {
+                        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                        bridgeConn = c;
+                        c.setConnectTimeout(10000); c.setReadTimeout(15000);
+                        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile");
+                        c.setRequestProperty("Referer", "https://live.douyin.com/");
+                        if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
+                        java.io.InputStream in = c.getInputStream();
+                        po = new java.io.FileOutputStream(bridgeIn);
+                        byte[] b = new byte[32768];
+                        int n;
+                        while (bridgePulling && (n = in.read(b)) > 0) po.write(b, 0, n);
+                        in.close();
+                    } catch (Throwable t) {
+                        try {
+                            java.io.FileWriter fw = new java.io.FileWriter(new java.io.File(getExternalFilesDir(null), "bridge.log"), true);
+                            fw.append("pull: " + t + "\n"); fw.close();
+                        } catch (Throwable ignored) {}
+                    } finally {
+                        try { if (po != null) po.close(); } catch (Throwable ignored) {}
+                        try { if (bridgeConn != null) bridgeConn.disconnect(); } catch (Throwable ignored) {}
+                    }
+                }
+            }).start();
+            // ffmpeg 本地转封装
             new Thread(new Runnable() {
                 public void run() {
                     flvBridge = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(cmd);
-                    // 会话结束后把日志落盘，供诊断
                     try {
-                        java.io.File lg = new java.io.File(getExternalFilesDir(null), "bridge.log");
-                        java.io.FileWriter fw = new java.io.FileWriter(lg);
-                        fw.write(flvBridge.getAllLogsAsString());
-                        fw.close();
+                        java.io.FileWriter fw = new java.io.FileWriter(new java.io.File(getExternalFilesDir(null), "bridge.log"), true);
+                        fw.append("ffmpeg: " + flvBridge.getAllLogsAsString() + "\n"); fw.close();
                     } catch (Throwable ignored) {}
                 }
             }).start();
             new Thread(new Runnable() {
                 public void run() {
-                    try { Thread.sleep(2000); } catch (Exception ignored) {}
+                    try { Thread.sleep(1500); } catch (Exception ignored) {}
                     runOnUiThread(new Runnable() {
                         public void run() {
                             play(Uri.parse("http://127.0.0.1:8123/live.ts"));
@@ -707,12 +737,16 @@ public class PlayerActivity extends Activity {
     }
 
     private void stopFlvBridge() {
+        bridgePulling = false;
         if (flvBridge != null) {
             try { flvBridge.cancel(); } catch (Throwable ignored) {}
             flvBridge = null;
         }
+        try { if (bridgeConn != null) bridgeConn.disconnect(); } catch (Throwable ignored) {}
+        try { if (bridgeIn != null) com.arthenica.ffmpegkit.FFmpegKitConfig.closeFFmpegPipe(bridgeIn); } catch (Throwable ignored) {}
+        try { if (bridgeOut != null) com.arthenica.ffmpegkit.FFmpegKitConfig.closeFFmpegPipe(bridgeOut); } catch (Throwable ignored) {}
+        bridgeIn = null; bridgeOut = null;
         LiveProxy.tsPipe = null;
-        if (bridgeFile != null) { try { bridgeFile.delete(); } catch (Throwable ignored) {} bridgeFile = null; }
     }
 
     private void play(Uri uri) {
