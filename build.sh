@@ -41,8 +41,10 @@ echo "[4/6] d8 dex (app + libvlc/ffk classes)..."
 find build_out/classes -name "*.class" > build_out/classlist.txt
 java -cp "$BT/lib/d8.jar" com.android.tools.r8.D8 --release \
     --lib "$SDK" --min-api 26 --output build_out/dex \
-    @build_out/classlist.txt deps/libvlc_out/classes.jar deps/ffk_out/classes.jar \
-    deps/ffk_out/sex/smart-exception-java-0.2.1.jar deps/ffk_out/sex/common/smart-exception-common-0.2.1.jar
+    @build_out/classlist.txt deps/ffk_classes.jar deps/ffk_out/sex/smart-exception-java-0.2.1.jar deps/ffk_out/sex/common/smart-exception-common-0.2.1.jar \
+    deps/media3/annotation.jar deps/media3/guava.jar deps/media3/media3-common.jar deps/media3/media3-database.jar \
+    deps/media3/media3-datasource.jar deps/media3/media3-decoder.jar deps/media3/media3-exoplayer.jar \
+    deps/media3/media3-exoplayer-hls.jar deps/media3/media3-extractor.jar deps/media3/media3-ui.jar
 
 echo "[5/6] dex + native libs + zipalign..."
 for d in build_out/dex/*.dex; do
