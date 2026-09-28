@@ -604,11 +604,18 @@ public class PlayerActivity extends Activity {
 
     /** h265-in-flv VLC 解不动：ffmpeg-kit 转 TS 推本地 UDP，VLC 播 UDP */
     private void playFlvViaBridge(String url) {
+        // 同一链接已在桥接中 → 直接复用现有 TS 流，避免重启黑屏
+        if (flvBridge != null && !flvBridge.getState().equals(com.arthenica.ffmpegkit.SessionState.COMPLETED)
+            && !flvBridge.getState().equals(com.arthenica.ffmpegkit.SessionState.FAILED)
+            && url.equals(flvOriginalUrl)) {
+            play(Uri.parse("http://127.0.0.1:8123/live.ts"));
+            return;
+        }
         stopFlvBridge();
         flvOriginalUrl = url;
         try {
-            bridgeFile = new java.io.File(getCacheDir(), "bridge.ts");
-            if (bridgeFile.exists()) bridgeFile.delete();
+            bridgeFile = new java.io.File(getCacheDir(), "bridge_" + System.currentTimeMillis() + ".ts");
+            LiveProxy.liveTsBytes = 0;
             LiveProxy.tsPipe = bridgeFile.getAbsolutePath();
             String headers = "Referer: https://live.douyin.com/\r\nUser-Agent: Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile\r\n";
             String[] cmd = {"-hide_banner", "-loglevel", "info",
@@ -647,7 +654,7 @@ public class PlayerActivity extends Activity {
             flvBridge = null;
         }
         LiveProxy.tsPipe = null;
-        if (bridgeFile != null) { try { bridgeFile.delete(); } catch (Throwable ignored) {} bridgeFile = null; }
+        bridgeFile = null;
     }
 
     private void play(Uri uri) {
