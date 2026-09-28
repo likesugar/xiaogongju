@@ -328,6 +328,10 @@ public class DouyinActivity extends Activity {
         btn.setPadding(28, 12, 28, 12);
         btn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
+                // 停掉页面播放，把流让给 VLC
+                String pj = "(function(){var m=document.querySelectorAll('video');for(var i=0;i<m.length;i++){try{m[i].pause();m[i].removeAttribute('src');m[i].load();}catch(e){}}})()";
+                webView.loadUrl("javascript:" + pj);
+                if (bgLive != null) bgLive.evaluateJavascript(pj, null);
                 Intent it = new Intent(DouyinActivity.this, PlayerActivity.class);
                 it.putExtra("autoUrl", streamUrl);
                 startActivity(it);

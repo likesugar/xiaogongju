@@ -446,8 +446,12 @@ public class ParseActivity extends Activity {
         }
     }
 
-    /** 把地址交给底层播放器开播 */
+    /** 把地址交给底层播放器开播（先停后台页面视频，释放 CDN 会话与解码器） */
     private void handToPlayer(String streamUrl) {
+        if (bgWeb != null) {
+            bgWeb.evaluateJavascript(
+                "(function(){var m=document.querySelectorAll('video');for(var i=0;i<m.length;i++){try{m[i].pause();m[i].removeAttribute('src');m[i].load();}catch(e){}}})()", null);
+        }
         if (PlayerActivity.parseSink != null) {
             PlayerActivity.parseSink.onParsed(streamUrl);
         } else {
