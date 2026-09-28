@@ -141,7 +141,8 @@ public class DouyinActivity extends Activity {
             if (!url.startsWith("http")) url = "https://" + url;
         }
         ensureDesktopForLive(url);
-        bgLive.loadUrl(url);   // 后台桌面 UA 跑，前台保持不动
+        bgLive.loadUrl(url);      // 后台桌面 UA：抓原画
+        webView.loadUrl(url);     // 前台自己的 UA：看画面
         recordsPanel.setVisibility(View.VISIBLE);
     }
 
