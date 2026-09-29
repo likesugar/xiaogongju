@@ -197,13 +197,8 @@ public class PlayerActivity extends Activity {
             } else {
                 String last = getSharedPreferences("settings", MODE_PRIVATE).getString("lastUrl", null);
                 if (last != null && !last.isEmpty()) {
-                    if (!last.startsWith("http")) {
-                        // 本地 SAF 授权已失效的记录：清掉，不再自动播
-                        getSharedPreferences("settings", MODE_PRIVATE).edit().remove("lastUrl").apply();
-                    } else {
-                        setPlayState("恢复上次直播: " + last);
-                        play(Uri.parse(last));
-                    }
+                    setPlayState("恢复上次直播: " + last);
+                    play(Uri.parse(last));
                 }
             }
         } catch (Throwable t) {
@@ -447,11 +442,8 @@ public class PlayerActivity extends Activity {
         findViewById(R.id.btnPick).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 try {
-                    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
                     i.setType("*/*");
-                    i.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-                        | Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivityForResult(i, 1);
                 } catch (Throwable t) {
                     showError("选择文件失败", t);
@@ -497,10 +489,6 @@ public class PlayerActivity extends Activity {
         if (req == 1 && res == RESULT_OK && data != null && data.getData() != null) {
             try {
                 Uri uri = data.getData();
-                try {
-                    getContentResolver().takePersistableUriPermission(uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                } catch (Throwable ignored) {}
                                 play(uri);
             } catch (Throwable t) {
                 showError("播放失败", t);
@@ -732,24 +720,14 @@ public class PlayerActivity extends Activity {
     }
 
     static void convertToMp4(final RecJob job) {
-        convertToMp4(job, false);
-    }
-
-    static void convertToMp4(final RecJob job, final boolean reencode) {
         job.state = "转换MP4中…";
-        stoppedJobs.put(job.id, job);   // 转换期间保持可见
         try {
             String src = job.storeUri != null
                 ? com.arthenica.ffmpegkit.FFmpegKitConfig.getSafParameterForRead(sCtx, job.storeUri)
                 : job.file.getAbsolutePath();
             java.io.File tmp = new java.io.File(sCtx.getCacheDir(), "conv_" + System.currentTimeMillis() + ".mp4");
-            // KB 抓取流时间戳跳变严重，copy 会被 MP4 截断 → 重编码重生时间戳（保证全长顺滑）
-            String[] args = reencode
-                ? new String[]{"-y", "-fflags", "+genpts", "-i", src,
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-                    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", tmp.getAbsolutePath()}
-                : new String[]{"-y", "-i", src, "-c", "copy", "-movflags", "+faststart", tmp.getAbsolutePath()};
-            com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(args);
+            com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(
+                new String[]{"-y", "-i", src, "-c", "copy", "-movflags", "+faststart", tmp.getAbsolutePath()});
             if (st.getState().equals(com.arthenica.ffmpegkit.SessionState.COMPLETED) && tmp.length() > 0) {
                 String name = job.name != null ? job.name : "rec.mp4";
                 String mp4Name = (name.endsWith(".flv") ? name.substring(0, name.length() - 4) : name) + ".mp4";
@@ -757,7 +735,6 @@ public class PlayerActivity extends Activity {
                 cv.put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, mp4Name);
                 cv.put(android.provider.MediaStore.Video.Media.MIME_TYPE, "video/mp4");
                 cv.put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/录制");
-                cv.put(android.provider.MediaStore.Video.Media.IS_PENDING, 1);
                 android.net.Uri out = sCtx.getContentResolver().insert(
                     android.provider.MediaStore.Video.Media.getContentUri("external_primary"), cv);
                 java.io.InputStream in = new java.io.FileInputStream(tmp);
@@ -765,35 +742,13 @@ public class PlayerActivity extends Activity {
                 byte[] b = new byte[32768]; int n;
                 while ((n = in.read(b)) > 0) os.write(b, 0, n);
                 os.close(); in.close();
-                cv.clear();
-                cv.put(android.provider.MediaStore.Video.Media.IS_PENDING, 0);
-                sCtx.getContentResolver().update(out, cv, null, null);
-                try { if (job.storeUri != null) sCtx.getContentResolver().delete(job.storeUri, null, null); } catch (Throwable ignored) {}
+                try { sCtx.getContentResolver().delete(job.storeUri, null, null); } catch (Throwable ignored) {}
             }
             tmp.delete();
             stoppedJobs.remove(job.id);   // 成功：从列表移除
         } catch (Throwable t) {
             job.state = "转换失败(保留flv)";
-            dumpFfmpegLog(t);
         }
-    }
-
-    /** 转换失败时把 ffmpeg 日志落到 Download/录制/（MediaStore，公共可见） */
-    static void dumpFfmpegLog(Throwable t) {
-        try {
-            java.io.StringWriter sw = new java.io.StringWriter();
-            sw.write("convert error: " + t + "\n");
-            android.content.ContentValues cv = new android.content.ContentValues();
-            cv.put(android.provider.MediaStore.Downloads.DISPLAY_NAME,
-                "conv_fail_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US).format(new java.util.Date()) + ".txt");
-            cv.put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain");
-            cv.put(android.provider.MediaStore.Downloads.RELATIVE_PATH, "Download/录制");
-            android.net.Uri uri = sCtx.getContentResolver().insert(
-                android.provider.MediaStore.Downloads.getContentUri("external_primary"), cv);
-            java.io.OutputStream os = sCtx.getContentResolver().openOutputStream(uri);
-            os.write(sw.toString().getBytes());
-            os.close();
-        } catch (Throwable ignored) {}
     }
 
     /** 彻底取消：删文件、从列表移除 */
@@ -826,51 +781,38 @@ public class PlayerActivity extends Activity {
         job.name = name;
         job.file = f;
         job.notifId = -1;
-        job.startTs = System.currentTimeMillis();   // 计时起点（之前一直显示 00:00:00）
         kbJob = job;
     }
 
-    /** KB 结束录制：PTS 重建后秒转 MP4（copy）入 Movies/录制；失败留 ts */
+    /** KB 结束录制：PTS 重建 + 转 MP4 入 Movies/录制 */
     public static void kbFinish() {
         final RecJob job = kbJob;
         if (job == null) return;
         new Thread(new Runnable() { public void run() {
             try { SnifferActivity.stopKb(); } catch (Throwable ignored) {}
-            // 等待 stopKb 的异步 PTS 重建（fix_tmp.ts）完成，最多 20s
-            try {
-                java.io.File fix = new java.io.File(SnifferActivity.kbDir.getParentFile(), "fix_tmp.ts");
-                for (int i = 0; i < 60 && fix.exists(); i++) Thread.sleep(300);
-            } catch (Throwable ignored) {}
-            convertToMp4(job, false);   // 时间戳已重建，copy 秒转全长
+            convertToMp4(job);
             if (kbJob == job) kbJob = null;
         }}).start();
     }
 
-    /** 单条录制总通知（含 KB 抓取）：N路 · 点击进入 VLC 播放器 */
-    static int recNoteCount() {
-        return recJobs.size() + (SnifferActivity.kbState[0] == 1 ? 1 : 0);
-    }
-
-    static android.app.Notification buildRecNote(Context ctx) {
-        android.app.NotificationChannel ch = new android.app.NotificationChannel("rec", "直播录制", android.app.NotificationManager.IMPORTANCE_LOW);
-        android.app.NotificationManager nm = (android.app.NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-        nm.createNotificationChannel(ch);
-        return new android.app.Notification.Builder(ctx, "rec")
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("小工具 · 录制中 " + recNoteCount() + " 路")
-            .setContentText("点击进入 VLC 播放器")
-            .setOngoing(true)
-            .setContentIntent(android.app.PendingIntent.getActivity(ctx, 9100,
-                new Intent(ctx, PlayerActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT))
-            .build();
-    }
-
-    public static void updateRecNote() {
+    /** 单条录制总通知：X路 · 点击进入 VLC 播放器 */
+    private static void updateRecNote() {
         try {
             android.app.NotificationManager nm = (android.app.NotificationManager) sCtx.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (recNoteCount() == 0) { nm.cancel(9100); return; }
-            nm.notify(9100, buildRecNote(sCtx));
+            int cnt = recJobs.size();
+            if (cnt == 0) { nm.cancel(9100); return; }
+            android.app.NotificationChannel ch = new android.app.NotificationChannel("rec", "直播录制", android.app.NotificationManager.IMPORTANCE_LOW);
+            nm.createNotificationChannel(ch);
+            android.app.Notification nt = new android.app.Notification.Builder(sCtx, "rec")
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentTitle("小工具 · 录制中 " + cnt + " 路")
+                .setContentText("点击进入 VLC 播放器")
+                .setOngoing(true)
+                .setContentIntent(android.app.PendingIntent.getActivity(sCtx, 9100,
+                    new Intent(sCtx, PlayerActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT))
+                .build();
+            nm.notify(9100, nt);
         } catch (Throwable ignored) {}
     }
 
@@ -905,8 +847,7 @@ public class PlayerActivity extends Activity {
         // 直连播放
         currentMediaUrl = uri.toString();
         lastStreamUrl = uri.toString();
-        if (uri.toString().startsWith("http"))   // 本地 SAF 授权 URI 会过期，不能存
-            getSharedPreferences("settings", MODE_PRIVATE).edit().putString("lastUrl", uri.toString()).apply();
+        getSharedPreferences("settings", MODE_PRIVATE).edit().putString("lastUrl", uri.toString()).apply();
         currentUrl = uri.toString();
         setPlayState("开始播放: " + uri);
         try {

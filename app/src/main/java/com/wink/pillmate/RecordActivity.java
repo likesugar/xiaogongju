@@ -57,13 +57,6 @@ public class RecordActivity extends Activity {
         recNow.setBackgroundColor(0xFF24485E);
         recNow.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                // 网页解析页开着 → 抓当前页面分片（KB 模式）
-                if (SnifferActivity.kbPageAlive && SnifferActivity.kbState[0] == 0 && LiveProxy.mediaUrl != null) {
-                    SnifferActivity.startKb(RecordActivity.this);
-                    rebuild();
-                    Toast.makeText(RecordActivity.this, "已开始抓取网页流", Toast.LENGTH_SHORT).show();
-                    return;
-                }
                 String u = PlayerActivity.lastStreamUrl;
                 if (u == null || u.isEmpty() || !u.startsWith("http")) {
                     Toast.makeText(RecordActivity.this, "先在播放器里开播一条直播流", Toast.LENGTH_SHORT).show();
@@ -118,7 +111,7 @@ public class RecordActivity extends Activity {
 
     private void rebuild() {
         list.removeAllViews();
-        int n = PlayerActivity.recJobs.size() + PlayerActivity.stoppedJobs.size() + (PlayerActivity.kbJob != null ? 1 : 0);
+        int n = PlayerActivity.recJobs.size() + PlayerActivity.stoppedJobs.size();
         tvEmpty.setVisibility(n == 0 ? View.VISIBLE : View.GONE);
         for (PlayerActivity.RecJob j : PlayerActivity.recJobs.values()) addRow(list, j, true);
         for (PlayerActivity.RecJob j : PlayerActivity.stoppedJobs.values()) addRow(list, j, false);
@@ -220,8 +213,7 @@ public class RecordActivity extends Activity {
         }
         pm.getMenu().add("结束录制(转MP4)").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
             public boolean onMenuItemClick(android.view.MenuItem it) {
-                if (j == PlayerActivity.kbJob) PlayerActivity.kbFinish();   // KB 任务走自己的结束流程
-                else PlayerActivity.recFinish(j.id);
+                PlayerActivity.recFinish(j.id);
                 rebuild();
                 return true;
             }
@@ -287,34 +279,11 @@ public class RecordActivity extends Activity {
         Toast.makeText(this, "请到 Movies/录制 目录查看", Toast.LENGTH_LONG).show();
     }
 
-    private String realPathOf(android.net.Uri uri) {
-        try {
-            android.database.Cursor c = getContentResolver().query(uri,
-                new String[]{android.provider.MediaStore.Video.Media.DATA}, null, null, null);
-            if (c != null) {
-                if (c.moveToFirst()) {
-                    String p = c.getString(0);
-                    c.close();
-                    return p;
-                }
-                c.close();
-            }
-        } catch (Throwable ignored) {}
-        return null;
-    }
-
     private void play(PlayerActivity.RecJob j) {
         try {
             if (j.storeUri == null && (j.file == null || !j.file.exists())) { Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show(); return; }
             Intent it = new Intent(this, PlayerActivity.class);
-            String auto = null;
-            if (j.storeUri != null) {
-                String p = realPathOf(j.storeUri);           // 自己写入的媒体文件直接用路径读，绕开 provider 权限
-                auto = (p != null) ? "file://" + p : j.storeUri.toString();
-            } else {
-                auto = "file://" + j.file.getAbsolutePath();
-            }
-            it.putExtra("autoUrl", auto);
+            it.putExtra("autoUrl", j.storeUri != null ? j.storeUri.toString() : "file://" + j.file.getAbsolutePath());
             startActivity(it);
         } catch (Throwable t) {
             Toast.makeText(this, "打开失败: " + t, Toast.LENGTH_SHORT).show();

@@ -14,7 +14,6 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
@@ -34,19 +33,15 @@ public class SnifferActivity extends Activity {
     private static final java.util.LinkedHashSet<String> kbSeen = new java.util.LinkedHashSet<>();
     private static java.io.FileOutputStream kbOut = null;
     private static String kbOutName = "";
-    static java.io.File kbDir;
+    private static java.io.File kbDir;
     private static final String[] kbStream = {""};
     private boolean launched = false;
     private static boolean mediaLocked = false;
-    private static String lastMaster = "";
-
-    public static volatile boolean kbPageAlive = false;   // 网页解析页可用（下载页“录制当前”用）
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        kbPageAlive = true;
         setContentView(R.layout.activity_sniffer);
 
         // Android 13+ 通知运行时权限（后台录制通知必需）
@@ -71,35 +66,17 @@ public class SnifferActivity extends Activity {
             }
 
             @Override
-            public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
-                super.doUpdateVisitedHistory(view, url, isReload);
-                if (url != null && !url.startsWith("data:")) {
-                    ((EditText) findViewById(R.id.etSniffUrl)).setText(url);
-                }
-            }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                // 页内换房间也重置嗅探锁，允许锁定新直播间的最高档
-                mediaLocked = false;
-                TextView r = findViewById(R.id.tvSniffResult);
-                TextView b = findViewById(R.id.btnKbPlay);
-                if (r != null) r.setText("嗅探结果");
-                if (b != null) b.setVisibility(View.GONE);
-            }
-
-            @Override
             public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 try {
                     if (!"GET".equalsIgnoreCase(request.getMethod())) return null;
                     Uri u = request.getUrl();
                     if (!"http".equals(u.getScheme()) && !"https".equals(u.getScheme())) return null;
                     String url = u.toString();
+                    if (kbState[0] == 0 && url.toLowerCase().contains(".ts") && url.contains("/stream/")) {
+                        // 自动录制：第一个直播分片出现即开始（边抓边合并进最终文件）
+                        startKb(SnifferActivity.this);
+                    }
                     if (kbState[0] == 1 && kbSeen.add(url) && url.toLowerCase().contains(".ts")) {
-                        // 只存当前锁定档位：URL 档位段（/NN/data）必须与 mediaUrl 一致，否则 ABR 混流毁文件
-                        if (!sameQuality(url, LiveProxy.mediaUrl)) {
-                            kblog("跳过异档分片 " + url);
-                        } else {
                         final long __t0 = System.currentTimeMillis();
                         final java.util.Map<String, String> __hdrs = request.getRequestHeaders();
                         // KB 模式（单次令牌版）：我们替页面下载这份分片，存档后回喂给页面
@@ -136,7 +113,6 @@ public class SnifferActivity extends Activity {
                             }
                             c.disconnect();
                         } catch (Throwable ignored) {}
-                        }   // end else(同档存档)
                     }
                     if (MEDIA.matcher(url).find()) {
                         final String fUrl = url;
@@ -192,15 +168,6 @@ public class SnifferActivity extends Activity {
             }
         });
 
-        findViewById(R.id.btnKbPlay).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                try {
-                    Intent it = new Intent(SnifferActivity.this, PlayerActivity.class);
-                    it.putExtra("autoUrl", "http://127.0.0.1:" + LiveProxy.PORT + "/playlist.m3u8");
-                    startActivity(it);
-                } catch (Throwable t) { Toast.makeText(SnifferActivity.this, "打开失败", Toast.LENGTH_SHORT).show(); }
-            }
-        });
         findViewById(R.id.btnGo).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 load(((EditText) findViewById(R.id.etSniffUrl)).getText().toString().trim());
@@ -222,28 +189,32 @@ public class SnifferActivity extends Activity {
         String lu = url.toLowerCase();
         if (lu.contains(".ts")) return; // 分片不处理（刷新器自己抓）
         if (lu.contains("/stream/") && lu.contains("playlist") && !lu.contains("master")) {
-            // 同 URL 判重（防 ABR 重复请求）；页内换房间 URL 不同 → 自动跟随新房间
-            if (lu.equals(lastMaster)) return;
-            lastMaster = lu;
-            mediaLocked = true;
+            if (mediaLocked) return; // 已锁定最高档，后台 ABR 降档不跟随
+            mediaLocked = true;      // master 已被强制 targets=90，首个列表即最高档
             // 媒体列表地址交给独立刷新器（服务自己轮询，页面可退）
             LiveProxy.mediaUrl = url;
             getSharedPreferences("settings", MODE_PRIVATE).edit().putString("mediaUrl", url).apply();
             LiveProxy.fetchLatest(url);
-            // 全手动：不自动跳播放器，点底部“▶ 播放”自己进
-            runOnUiThread(new Runnable() { public void run() {
-                TextView r = findViewById(R.id.tvSniffResult);
-                TextView b = findViewById(R.id.btnKbPlay);
-                if (r != null) r.setText("已嗅探到直播流，点 ▶ 播放，或去下载页录制");
-                if (b != null) b.setVisibility(View.VISIBLE);
-            }});
+            if (!launched) {
+                launched = true;
+                startKb(this); // 开输出流+前台服务
+                // 竞态修复：等 refresher 抓到第一份播放列表再拉播放器（最多 8s）
+                final android.content.Context ctx = this;
+                new Thread(new Runnable() { public void run() {
+                    for (int i = 0; i < 16 && LiveProxy.latestBody == null; i++) {
+                        try { Thread.sleep(500); } catch (Exception ignored) {}
+                    }
+                    Intent it = new Intent(ctx, PlayerActivity.class);
+                    it.putExtra("autoUrl", "http://127.0.0.1:" + LiveProxy.PORT + "/playlist.m3u8");
+                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    ctx.startActivity(it);
+                }}).start();
+            }
         }
     }
 
     private void load(String url) {
         if (url.isEmpty()) return;
-        // 换房间：重置嗅探锁，允许重新锁定新直播间的最高档
-        mediaLocked = false;
         if (!url.startsWith("http")) url = "https://" + url;
         Toast.makeText(this, "正在打开页面并嗅探…", Toast.LENGTH_SHORT).show();
         webView.loadUrl(url);
@@ -267,27 +238,6 @@ public class SnifferActivity extends Activity {
                 kblogW.flush();
             }
         } catch (Exception ignored) {}
-    }
-
-    /** 判断分片 URL 与 mediaUrl 是否同一画质档位（取 /v3/<id>/<NN>/data 中的 NN 段对比） */
-    private static boolean sameQuality(String segUrl, String mediaUrl) {
-        try {
-            if (mediaUrl == null) return false;   // 未锁定档位前不落盘，杜绝开头混档
-            String mSeg = qualitySeg(mediaUrl), sSeg = qualitySeg(segUrl);
-            if (mSeg == null || sSeg == null) return true;
-            return mSeg.equals(sSeg);
-        } catch (Throwable t) { return true; }
-    }
-
-    private static String qualitySeg(String url) {
-        try {
-            // …/v3/<房间>/<档位>/data/<文件> → 取 <档位>（之前错取了房间号，过滤形同虚设）
-            int i = url.indexOf("/data/");
-            if (i < 0) return null;
-            int j = url.lastIndexOf('/', i - 1);
-            if (j < 0 || j + 1 >= i) return null;
-            return url.substring(j + 1, i);   // "32"/"42" 等档位段
-        } catch (Throwable t) { return null; }
     }
 
     public static void startKb(Context c) {
