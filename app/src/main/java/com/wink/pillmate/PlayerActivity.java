@@ -794,6 +794,7 @@ public class PlayerActivity extends Activity {
         job.name = name;
         job.file = f;
         job.notifId = -1;
+        job.startTs = System.currentTimeMillis();   // 计时起点（之前一直显示 00:00:00）
         kbJob = job;
     }
 
