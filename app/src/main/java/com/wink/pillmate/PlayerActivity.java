@@ -635,7 +635,6 @@ public class PlayerActivity extends Activity {
         recJobs.put(job.id, job);
         stoppedJobs.remove(job.id);
         acquireWake();
-        updateRecNote();
         job.thread = new Thread(new Runnable() {
             public void run() {
                 java.io.FileOutputStream fo = null;
@@ -668,8 +667,7 @@ public class PlayerActivity extends Activity {
                     job.startTs = 0;
                     job.active = false;
                     recJobs.remove(job.id);
-                    updateRecNote();
-                    releaseWakeIfIdle();
+                                releaseWakeIfIdle();
                     try {   // 收尾：解除 pending，让系统文件管理器可见
                         android.content.ContentValues cv = new android.content.ContentValues();
                         cv.put(android.provider.MediaStore.Video.Media.IS_PENDING, 0);

@@ -277,14 +277,24 @@ public class SnifferActivity extends Activity {
             kbState[0] = 1;
             PlayerActivity.registerKb(kbOutName, new java.io.File(kbDir.getParentFile(), kbOutName));
             kbSeen.clear();
-            c.startService(new Intent(c, KbRecordService.class));
+            // 不再启动前台服务（通知栏要求）：进程内持锁保活
+            try {
+                if (kbWake == null) {
+                    android.os.PowerManager pm = (android.os.PowerManager) c.getSystemService(Context.POWER_SERVICE);
+                    kbWake = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "pillmate:kb");
+                    kbWake.acquire(4 * 3600 * 1000L);
+                }
+            } catch (Throwable ignored) {}
         } catch (Exception e) { kbState[0] = 0; }
     }
 
     /** 停止后台录制并关闭输出流 */
+    private static android.os.PowerManager.WakeLock kbWake = null;
+
     public static void stopKb() {
         try {
             kbState[0] = 0;
+            try { if (kbWake != null) { kbWake.release(); kbWake = null; } } catch (Throwable ignored) {}
             java.io.FileOutputStream fo = kbOut;
             kbOut = null;
             if (fo != null) { fo.flush(); fo.close(); }
@@ -319,8 +329,6 @@ public class SnifferActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         // 页面保留轮询（录制依赖令牌续命），退出 Activity 不销毁 WebView
-        if (kbState[0] == 1) {
-            try { startService(new Intent(this, KbRecordService.class)); } catch (Throwable ignored) {}
-        }
+        // 通知已并入下载页，不再拉起前台服务；抓取线程与持锁继续运行
     }
 }
