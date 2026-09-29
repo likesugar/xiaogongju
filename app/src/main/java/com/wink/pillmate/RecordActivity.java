@@ -191,7 +191,7 @@ public class RecordActivity extends Activity {
     private void showMenu(View anchor, PlayerActivity.RecJob j, boolean live) {
         PopupMenu pm = new PopupMenu(this, anchor);
         if (j == PlayerActivity.kbJob) {
-            pm.getMenu().add("结束录制(保存TS)").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
+            pm.getMenu().add("结束录制(转MP4)").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
                 public boolean onMenuItemClick(android.view.MenuItem it) { PlayerActivity.kbFinish(); rebuild(); return true; }
             });
             pm.getMenu().add("在VLC播放").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
