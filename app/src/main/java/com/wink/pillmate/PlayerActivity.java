@@ -818,7 +818,7 @@ public class PlayerActivity extends Activity {
         kbJob = job;
     }
 
-    /** KB 结束录制：PTS 重建 + 转 MP4 入 Movies/录制 */
+    /** KB 结束录制：PTS 重建后把 ts 原样保存进 Movies/录制（不转码） */
     public static void kbFinish() {
         final RecJob job = kbJob;
         if (job == null) return;
@@ -829,7 +829,29 @@ public class PlayerActivity extends Activity {
                 java.io.File fix = new java.io.File(SnifferActivity.kbDir.getParentFile(), "fix_tmp.ts");
                 for (int i = 0; i < 60 && fix.exists(); i++) Thread.sleep(300);
             } catch (Throwable ignored) {}
-            convertToMp4(job, true);   // KB 流必须重编码
+            job.state = "保存中…";
+            try {
+                String name = job.name != null ? job.name : "live.ts";
+                android.content.ContentValues cv = new android.content.ContentValues();
+                cv.put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, name);
+                cv.put(android.provider.MediaStore.Video.Media.MIME_TYPE, "video/mp2t");
+                cv.put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/录制");
+                cv.put(android.provider.MediaStore.Video.Media.IS_PENDING, 1);
+                android.net.Uri out = sCtx.getContentResolver().insert(
+                    android.provider.MediaStore.Video.Media.getContentUri("external_primary"), cv);
+                java.io.InputStream in = new java.io.FileInputStream(job.file);
+                java.io.OutputStream os = sCtx.getContentResolver().openOutputStream(out);
+                byte[] b = new byte[32768]; int n;
+                while ((n = in.read(b)) > 0) os.write(b, 0, n);
+                os.close(); in.close();
+                cv.clear();
+                cv.put(android.provider.MediaStore.Video.Media.IS_PENDING, 0);
+                sCtx.getContentResolver().update(out, cv, null, null);
+                job.file.delete();
+                stoppedJobs.remove(job.id);
+            } catch (Throwable t) {
+                job.state = "保存失败(ts保留原目录)";
+            }
             if (kbJob == job) kbJob = null;
         }}).start();
     }
