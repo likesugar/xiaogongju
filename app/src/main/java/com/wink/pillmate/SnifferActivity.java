@@ -281,13 +281,12 @@ public class SnifferActivity extends Activity {
 
     private static String qualitySeg(String url) {
         try {
+            // …/v3/<房间>/<档位>/data/<文件> → 取 <档位>（之前错取了房间号，过滤形同虚设）
             int i = url.indexOf("/data/");
             if (i < 0) return null;
             int j = url.lastIndexOf('/', i - 1);
-            if (j < 0) return null;
-            int k = url.lastIndexOf('/', j - 1);
-            if (k < 0) return null;
-            return url.substring(k + 1, j);   // NN 档位段
+            if (j < 0 || j + 1 >= i) return null;
+            return url.substring(j + 1, i);   // "32"/"42" 等档位段
         } catch (Throwable t) { return null; }
     }
 
