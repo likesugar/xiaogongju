@@ -77,11 +77,6 @@ public class SnifferActivity extends Activity {
                         startKb(SnifferActivity.this);
                     }
                     if (kbState[0] == 1 && kbSeen.add(url) && url.toLowerCase().contains(".ts")) {
-                        // 只存最高档：分片档位段(/NN/data)必须与锁定档一致，杜绝 ABR 混档掉帧
-                        if (!sameQuality(url, LiveProxy.mediaUrl)) {
-                            kblog("跳过异档分片 " + url);
-                            return null;   // 低档分片不代抓不存档，页面自己处理
-                        }
                         final long __t0 = System.currentTimeMillis();
                         final java.util.Map<String, String> __hdrs = request.getRequestHeaders();
                         // KB 模式（单次令牌版）：我们替页面下载这份分片，存档后回喂给页面
@@ -203,17 +198,9 @@ public class SnifferActivity extends Activity {
             if (!launched) {
                 launched = true;
                 startKb(this); // 开输出流+前台服务
-                // 竞态修复：等 refresher 抓到第一份播放列表再拉播放器（最多 8s）
-                final android.content.Context ctx = this;
-                new Thread(new Runnable() { public void run() {
-                    for (int i = 0; i < 16 && LiveProxy.latestBody == null; i++) {
-                        try { Thread.sleep(500); } catch (Exception ignored) {}
-                    }
-                    Intent it = new Intent(ctx, PlayerActivity.class);
-                    it.putExtra("autoUrl", "http://127.0.0.1:" + LiveProxy.PORT + "/playlist.m3u8");
-                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    ctx.startActivity(it);
-                }}).start();
+                Intent it = new Intent(this, PlayerActivity.class);
+                it.putExtra("autoUrl", "http://127.0.0.1:" + LiveProxy.PORT + "/playlist.m3u8");
+                startActivity(it);
             }
         }
     }
@@ -245,26 +232,6 @@ public class SnifferActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
-    /** 判断分片与锁定档位是否同档（…/v3/<房间>/<档位>/data/… 中的 <档位>） */
-    private static boolean sameQuality(String segUrl, String mediaUrl) {
-        try {
-            if (mediaUrl == null) return true;
-            String m = qualitySeg(mediaUrl), q = qualitySeg(segUrl);
-            if (m == null || q == null) return true;
-            return m.equals(q);
-        } catch (Throwable t) { return true; }
-    }
-
-    private static String qualitySeg(String url) {
-        try {
-            int i = url.indexOf("/data/");
-            if (i < 0) return null;
-            int j = url.lastIndexOf('/', i - 1);
-            if (j < 0 || j + 1 >= i) return null;
-            return url.substring(j + 1, i);
-        } catch (Throwable t) { return null; }
-    }
-
     public static void startKb(Context c) {
         if (kbState[0] == 1) return;
         try {
@@ -275,26 +242,15 @@ public class SnifferActivity extends Activity {
             kbOut = new java.io.FileOutputStream(new java.io.File(kbDir.getParentFile(), kbOutName), true);
             LiveProxy.kbOut = kbOut;
             kbState[0] = 1;
-            PlayerActivity.registerKb(kbOutName, new java.io.File(kbDir.getParentFile(), kbOutName));
             kbSeen.clear();
-            // 不再启动前台服务（通知栏要求）：进程内持锁保活
-            try {
-                if (kbWake == null) {
-                    android.os.PowerManager pm = (android.os.PowerManager) c.getSystemService(Context.POWER_SERVICE);
-                    kbWake = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "pillmate:kb");
-                    kbWake.acquire(4 * 3600 * 1000L);
-                }
-            } catch (Throwable ignored) {}
+            c.startService(new Intent(c, KbRecordService.class));
         } catch (Exception e) { kbState[0] = 0; }
     }
 
     /** 停止后台录制并关闭输出流 */
-    private static android.os.PowerManager.WakeLock kbWake = null;
-
     public static void stopKb() {
         try {
             kbState[0] = 0;
-            try { if (kbWake != null) { kbWake.release(); kbWake = null; } } catch (Throwable ignored) {}
             java.io.FileOutputStream fo = kbOut;
             kbOut = null;
             if (fo != null) { fo.flush(); fo.close(); }
@@ -329,6 +285,8 @@ public class SnifferActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         // 页面保留轮询（录制依赖令牌续命），退出 Activity 不销毁 WebView
-        // 通知已并入下载页，不再拉起前台服务；抓取线程与持锁继续运行
+        if (kbState[0] == 1) {
+            try { startService(new Intent(this, KbRecordService.class)); } catch (Throwable ignored) {}
+        }
     }
 }

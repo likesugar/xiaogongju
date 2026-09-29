@@ -667,7 +667,7 @@ public class PlayerActivity extends Activity {
                     job.startTs = 0;
                     job.active = false;
                     recJobs.remove(job.id);
-                                releaseWakeIfIdle();
+                    releaseWakeIfIdle();
                     try {   // 收尾：解除 pending，让系统文件管理器可见
                         android.content.ContentValues cv = new android.content.ContentValues();
                         cv.put(android.provider.MediaStore.Video.Media.IS_PENDING, 0);
@@ -720,9 +720,7 @@ public class PlayerActivity extends Activity {
     static void convertToMp4(final RecJob job) {
         job.state = "转换MP4中…";
         try {
-            String src = job.storeUri != null
-                ? com.arthenica.ffmpegkit.FFmpegKitConfig.getSafParameterForRead(sCtx, job.storeUri)
-                : job.file.getAbsolutePath();
+            String src = com.arthenica.ffmpegkit.FFmpegKitConfig.getSafParameterForRead(sCtx, job.storeUri);
             java.io.File tmp = new java.io.File(sCtx.getCacheDir(), "conv_" + System.currentTimeMillis() + ".mp4");
             com.arthenica.ffmpegkit.FFmpegSession st = com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(
                 new String[]{"-y", "-i", src, "-c", "copy", "-movflags", "+faststart", tmp.getAbsolutePath()});
@@ -767,50 +765,6 @@ public class PlayerActivity extends Activity {
         try {
             android.app.NotificationManager nm = (android.app.NotificationManager) sCtx.getSystemService(Context.NOTIFICATION_SERVICE);
             nm.cancel(id);
-        } catch (Throwable ignored) {}
-    }
-
-    /** 网页解析 KB 抓取任务（挂在下载页显示） */
-    public static RecJob kbJob = null;
-
-    static void registerKb(String name, java.io.File f) {
-        RecJob job = new RecJob();
-        job.id = ++recSeq;
-        job.name = name;
-        job.file = f;
-        job.notifId = -1;
-        kbJob = job;
-    }
-
-    /** KB 结束录制：PTS 重建 + 转 MP4 入 Movies/录制 */
-    public static void kbFinish() {
-        final RecJob job = kbJob;
-        if (job == null) return;
-        new Thread(new Runnable() { public void run() {
-            try { SnifferActivity.stopKb(); } catch (Throwable ignored) {}
-            convertToMp4(job);
-            if (kbJob == job) kbJob = null;
-        }}).start();
-    }
-
-    /** 单条录制总通知：X路 · 点击进入 VLC 播放器 */
-    private static void updateRecNote() {
-        try {
-            android.app.NotificationManager nm = (android.app.NotificationManager) sCtx.getSystemService(Context.NOTIFICATION_SERVICE);
-            int cnt = recJobs.size();
-            if (cnt == 0) { nm.cancel(9100); return; }
-            android.app.NotificationChannel ch = new android.app.NotificationChannel("rec", "直播录制", android.app.NotificationManager.IMPORTANCE_LOW);
-            nm.createNotificationChannel(ch);
-            android.app.Notification nt = new android.app.Notification.Builder(sCtx, "rec")
-                .setSmallIcon(android.R.drawable.ic_media_play)
-                .setContentTitle("小工具 · 录制中 " + cnt + " 路")
-                .setContentText("点击进入 VLC 播放器")
-                .setOngoing(true)
-                .setContentIntent(android.app.PendingIntent.getActivity(sCtx, 9100,
-                    new Intent(sCtx, PlayerActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT))
-                .build();
-            nm.notify(9100, nt);
         } catch (Throwable ignored) {}
     }
 
