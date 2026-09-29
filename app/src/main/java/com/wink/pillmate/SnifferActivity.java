@@ -77,6 +77,11 @@ public class SnifferActivity extends Activity {
                         startKb(SnifferActivity.this);
                     }
                     if (kbState[0] == 1 && kbSeen.add(url) && url.toLowerCase().contains(".ts")) {
+                        // 只存最高档：分片档位段(/NN/data)必须与锁定档一致，杜绝 ABR 混档掉帧
+                        if (!sameQuality(url, LiveProxy.mediaUrl)) {
+                            kblog("跳过异档分片 " + url);
+                            return null;   // 低档分片不代抓不存档，页面自己处理
+                        }
                         final long __t0 = System.currentTimeMillis();
                         final java.util.Map<String, String> __hdrs = request.getRequestHeaders();
                         // KB 模式（单次令牌版）：我们替页面下载这份分片，存档后回喂给页面
@@ -238,6 +243,26 @@ public class SnifferActivity extends Activity {
                 kblogW.flush();
             }
         } catch (Exception ignored) {}
+    }
+
+    /** 判断分片与锁定档位是否同档（…/v3/<房间>/<档位>/data/… 中的 <档位>） */
+    private static boolean sameQuality(String segUrl, String mediaUrl) {
+        try {
+            if (mediaUrl == null) return true;
+            String m = qualitySeg(mediaUrl), q = qualitySeg(segUrl);
+            if (m == null || q == null) return true;
+            return m.equals(q);
+        } catch (Throwable t) { return true; }
+    }
+
+    private static String qualitySeg(String url) {
+        try {
+            int i = url.indexOf("/data/");
+            if (i < 0) return null;
+            int j = url.lastIndexOf('/', i - 1);
+            if (j < 0 || j + 1 >= i) return null;
+            return url.substring(j + 1, i);
+        } catch (Throwable t) { return null; }
     }
 
     public static void startKb(Context c) {
