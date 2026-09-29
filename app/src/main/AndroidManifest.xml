@@ -43,6 +43,7 @@
         <activity android:name=".ParseActivity" android:exported="false"
             android:theme="@style/ParseDialog"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"/>
+        <activity android:name=".RecordActivity" android:exported="false"/>
         <activity android:name=".DouyinActivity" android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"/>
 
