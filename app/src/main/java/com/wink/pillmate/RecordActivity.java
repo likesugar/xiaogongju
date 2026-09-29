@@ -220,7 +220,8 @@ public class RecordActivity extends Activity {
         }
         pm.getMenu().add("结束录制(转MP4)").setOnMenuItemClickListener(new android.view.MenuItem.OnMenuItemClickListener() {
             public boolean onMenuItemClick(android.view.MenuItem it) {
-                PlayerActivity.recFinish(j.id);
+                if (j == PlayerActivity.kbJob) PlayerActivity.kbFinish();   // KB 任务走自己的结束流程
+                else PlayerActivity.recFinish(j.id);
                 rebuild();
                 return true;
             }
