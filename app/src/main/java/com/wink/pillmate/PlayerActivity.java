@@ -197,8 +197,13 @@ public class PlayerActivity extends Activity {
             } else {
                 String last = getSharedPreferences("settings", MODE_PRIVATE).getString("lastUrl", null);
                 if (last != null && !last.isEmpty()) {
-                    setPlayState("恢复上次直播: " + last);
-                    play(Uri.parse(last));
+                    if (!last.startsWith("http")) {
+                        // 本地 SAF 授权已失效的记录：清掉，不再自动播
+                        getSharedPreferences("settings", MODE_PRIVATE).edit().remove("lastUrl").apply();
+                    } else {
+                        setPlayState("恢复上次直播: " + last);
+                        play(Uri.parse(last));
+                    }
                 }
             }
         } catch (Throwable t) {
