@@ -118,7 +118,7 @@ public class RecordActivity extends Activity {
 
     private void rebuild() {
         list.removeAllViews();
-        int n = PlayerActivity.recJobs.size() + PlayerActivity.stoppedJobs.size();
+        int n = PlayerActivity.recJobs.size() + PlayerActivity.stoppedJobs.size() + (PlayerActivity.kbJob != null ? 1 : 0);
         tvEmpty.setVisibility(n == 0 ? View.VISIBLE : View.GONE);
         for (PlayerActivity.RecJob j : PlayerActivity.recJobs.values()) addRow(list, j, true);
         for (PlayerActivity.RecJob j : PlayerActivity.stoppedJobs.values()) addRow(list, j, false);

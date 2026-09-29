@@ -744,6 +744,7 @@ public class PlayerActivity extends Activity {
                 cv.put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, mp4Name);
                 cv.put(android.provider.MediaStore.Video.Media.MIME_TYPE, "video/mp4");
                 cv.put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/录制");
+                cv.put(android.provider.MediaStore.Video.Media.IS_PENDING, 1);
                 android.net.Uri out = sCtx.getContentResolver().insert(
                     android.provider.MediaStore.Video.Media.getContentUri("external_primary"), cv);
                 java.io.InputStream in = new java.io.FileInputStream(tmp);
@@ -751,6 +752,9 @@ public class PlayerActivity extends Activity {
                 byte[] b = new byte[32768]; int n;
                 while ((n = in.read(b)) > 0) os.write(b, 0, n);
                 os.close(); in.close();
+                cv.clear();
+                cv.put(android.provider.MediaStore.Video.Media.IS_PENDING, 0);
+                sCtx.getContentResolver().update(out, cv, null, null);
                 try { sCtx.getContentResolver().delete(job.storeUri, null, null); } catch (Throwable ignored) {}
             }
             tmp.delete();
