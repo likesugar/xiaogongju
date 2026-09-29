@@ -442,8 +442,11 @@ public class PlayerActivity extends Activity {
         findViewById(R.id.btnPick).setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 try {
-                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
                     i.setType("*/*");
+                    i.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                        | Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivityForResult(i, 1);
                 } catch (Throwable t) {
                     showError("选择文件失败", t);
@@ -489,6 +492,10 @@ public class PlayerActivity extends Activity {
         if (req == 1 && res == RESULT_OK && data != null && data.getData() != null) {
             try {
                 Uri uri = data.getData();
+                try {
+                    getContentResolver().takePersistableUriPermission(uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (Throwable ignored) {}
                                 play(uri);
             } catch (Throwable t) {
                 showError("播放失败", t);
@@ -893,7 +900,8 @@ public class PlayerActivity extends Activity {
         // 直连播放
         currentMediaUrl = uri.toString();
         lastStreamUrl = uri.toString();
-        getSharedPreferences("settings", MODE_PRIVATE).edit().putString("lastUrl", uri.toString()).apply();
+        if (uri.toString().startsWith("http"))   // 本地 SAF 授权 URI 会过期，不能存
+            getSharedPreferences("settings", MODE_PRIVATE).edit().putString("lastUrl", uri.toString()).apply();
         currentUrl = uri.toString();
         setPlayState("开始播放: " + uri);
         try {
