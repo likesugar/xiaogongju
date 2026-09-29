@@ -725,6 +725,7 @@ public class PlayerActivity extends Activity {
 
     static void convertToMp4(final RecJob job, final boolean reencode) {
         job.state = "转换MP4中…";
+        stoppedJobs.put(job.id, job);   // 转换期间保持可见
         try {
             String src = job.storeUri != null
                 ? com.arthenica.ffmpegkit.FFmpegKitConfig.getSafParameterForRead(sCtx, job.storeUri)
@@ -755,13 +756,32 @@ public class PlayerActivity extends Activity {
                 cv.clear();
                 cv.put(android.provider.MediaStore.Video.Media.IS_PENDING, 0);
                 sCtx.getContentResolver().update(out, cv, null, null);
-                try { sCtx.getContentResolver().delete(job.storeUri, null, null); } catch (Throwable ignored) {}
+                try { if (job.storeUri != null) sCtx.getContentResolver().delete(job.storeUri, null, null); } catch (Throwable ignored) {}
             }
             tmp.delete();
             stoppedJobs.remove(job.id);   // 成功：从列表移除
         } catch (Throwable t) {
             job.state = "转换失败(保留flv)";
+            dumpFfmpegLog(t);
         }
+    }
+
+    /** 转换失败时把 ffmpeg 日志落到 Download/录制/（MediaStore，公共可见） */
+    static void dumpFfmpegLog(Throwable t) {
+        try {
+            java.io.StringWriter sw = new java.io.StringWriter();
+            sw.write("convert error: " + t + "\n");
+            android.content.ContentValues cv = new android.content.ContentValues();
+            cv.put(android.provider.MediaStore.Downloads.DISPLAY_NAME,
+                "conv_fail_" + new java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US).format(new java.util.Date()) + ".txt");
+            cv.put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain");
+            cv.put(android.provider.MediaStore.Downloads.RELATIVE_PATH, "Download/录制");
+            android.net.Uri uri = sCtx.getContentResolver().insert(
+                android.provider.MediaStore.Downloads.getContentUri("external_primary"), cv);
+            java.io.OutputStream os = sCtx.getContentResolver().openOutputStream(uri);
+            os.write(sw.toString().getBytes());
+            os.close();
+        } catch (Throwable ignored) {}
     }
 
     /** 彻底取消：删文件、从列表移除 */
